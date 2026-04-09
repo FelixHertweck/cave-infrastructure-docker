@@ -13,28 +13,83 @@ This repository provides an easy way to build and run CAVE Infrastructure in Doc
 - SSH key for deployment
 - (Optional) GitHub Container Registry access for pushing images
 
-### 1. Build the Image
+### Run CAVE Infrastructure in Docker
 
-```bash
-# Using Docker Compose (recommended)
-docker-compose build
+#### 1. Prepare Required Files
 
-# Or using Docker directly
-docker build -t ghcr.io/felixhertweck/cave-infrastructure-docker:latest .
+Create the following directory structure in the project root:
+
+```
+.
+├── docker-compose.yml
+├── .env                    # ← Copy from .env.sample and customize
+├── .env.sample             # Template for environment variables
+├── .openrc                 # (Optional) OpenStack RC file
+├── ssh-keys/               # SSH keys for deployment
+│   └── id_rsa
+├── backend/
+│   └── configs/           # CAVE configuration files
+│       ├── day1.json5
+│       └── users_day1.json
+└── out/                    # Output directory (created automatically)
 ```
 
-### 2. Run the Container
+#### 2. Configure Environment Variables
 
 ```bash
-# Interactive shell with Docker Compose
-docker-compose run --rm cave /bin/bash
+# Copy the sample file
+cp .env.sample .env
 
-# Inside the container, source your OpenStack credentials
-source /.openrc
-
-# Deploy infrastructure
-./make_it_so.sh configs/day1.json5 ~/.ssh/id_rsa configs/users_day1.json --lab-prefix mylab
+# Edit .env with your OpenStack credentials
 ```
+
+See [.env.sample](.env.sample) for all available options.
+
+#### 3. Configure docker-compose.yml
+
+Review the service configuration in [docker-compose.yml](docker-compose.yml). Key points:
+- Environment variables are loaded from `.env` file
+- SSH keys mounted at `./ssh-keys:/home/cave/.ssh:ro`
+- Config files at `./backend/configs:/cave/backend/configs:ro` 
+- Output at `./out:/cave/out:rw`
+- WireGuard capability enabled (`cap_add: NET_ADMIN`)
+
+#### 4. Build the Image
+
+```bash
+# Build locally (with BuildKit for better caching)
+DOCKER_BUILDKIT=1 docker-compose build
+
+# Or pull pre-built image
+docker-compose pull
+```
+
+#### 5. Run Deployments
+
+**Interactive Shell** – For debugging or manual commands:
+```bash
+docker-compose run --rm cave bash
+```
+
+**Direct Deployment** – Single command (credentials auto-loaded from .env):
+```bash
+docker-compose run --rm cave ./make_it_so.sh \
+  configs/day1.json5 \
+  ~/.ssh/id_rsa \
+  configs/users_day1.json \
+  --lab-prefix mylab
+```
+
+#### Tips
+
+- **Credentials**: Both `.env` and `.openrc` auto-sourced by entrypoint
+- **SSH Key Path**: Inside container at `/home/cave/.ssh/`
+- **Config Files**: Inside container at `/cave/backend/configs/`
+- **Output**: Generated files go to `./out/` (mounted as rw)
+- **BuildKit**: Set `DOCKER_BUILDKIT=1` for 40-60% faster builds
+- **Interactive Work**: Use `docker-compose run --rm cave bash` to explore
+
+
 
 ## Common Deployment Commands
 
@@ -64,21 +119,6 @@ source /.openrc
 
 ## Push to GitHub Container Registry
 
-This project is optimized for GitHub Container Registry (ghcr.io).
-
-### Setup
-
-1. **Create a GitHub Personal Access Token:**
-   - Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens)
-   - Create a token with `write:packages`, `read:packages`, `delete:packages` scopes
-
-2. **Login to GitHub Container Registry:**
-   ```bash
-   echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_USERNAME --password-stdin
-   ```
-
-### Build and Push
-
 ```bash
 # Build with registry namespace
 docker build -t ghcr.io/felixhertweck/cave-infrastructure-docker:latest .
@@ -91,115 +131,6 @@ docker tag ghcr.io/felixhertweck/cave-infrastructure-docker:latest \
   ghcr.io/felixhertweck/cave-infrastructure-docker:v1.0.0
 docker push ghcr.io/felixhertweck/cave-infrastructure-docker:v1.0.0
 ```
-
-### Use Image from Registry
-
-Update `docker-compose.yml`:
-```yaml
-services:
-  cave:
-    image: ghcr.io/felixhertweck/cave-infrastructure-docker:latest
-```
-
-Then run:
-```bash
-docker-compose pull
-docker-compose run --rm cave /bin/bash
-```
-
-## Automatic Builds with GitHub Actions
-
-Enable automatic builds and pushes on every commit. Create `.github/workflows/docker-build-push.yml`:
-
-```yaml
-name: Build and Push Docker Image
-
-on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  workflow_dispatch:
-
-jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/cave-infrastructure-docker
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=sha
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-```
-
-## Environment Variables
-
-Key OpenStack environment variables used inside the container:
-
-- `OS_PROJECT_NAME` - OpenStack project name
-- `OS_USERNAME` - OpenStack username  
-- `OS_PASSWORD` - OpenStack password
-- `OS_AUTH_URL` - OpenStack authentication endpoint
-- `OS_REGION_NAME` - OpenStack region (default: RegionOne)
-- `OS_IDENTITY_API_VERSION` - OpenStack identity version (default: 3)
-
-## Troubleshooting
-
-### Permission Denied on SSH Keys
-```bash
-chmod 600 ~/.ssh/id_rsa
-chmod 644 ~/.ssh/id_rsa.pub
-```
-
-### OpenStack Connection Issues
-```bash
-# Inside container, verify credentials
-openstack --version
-openstack endpoint list
-openstack image list
-```
-
-### Generated Files Ownership
-```bash
-# Fix permissions after deployment
-docker-compose exec cave chown -R $(id -u):$(id -g) /cave/out
-```
-
-## Project Structure
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| SSH Keys | `~/.ssh` | SSH keys for deployment |
-| OpenStack RC | `/.openrc` | OpenStack API credentials |
-| Configs | `/cave/backend/configs` | Lab configuration files |
-| Output | `/cave/out` | Generated OpenTofu infrastructure code |
-
-## Detailed Documentation
-
-For more information, see:
-- [DOCKER.md](DOCKER.md) - Detailed Docker and Docker Compose guide
-- [CAVE Infrastructure Docs](https://gitlab.opencode.de/BSI-Bund/cave/cave-infrastructure-docker) - Official CAVE project documentation
-- [OpenTofu Documentation](https://opentofu.org/)
-- [GitHub Container Registry Docs](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
 
 ## License
 
