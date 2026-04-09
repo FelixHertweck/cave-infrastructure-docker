@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  cave:
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/felixhertweck/cave-infrastructure:latest
+    
+    # Keep container running
+    stdin_open: true
+    tty: true
+    
+    # Mount volumes for configuration and SSH keys
+    volumes:
+      # OpenStack RC file (required)
+      - ./.openrc:/.openrc:ro
+      
+      # SSH keys for deployment
+      - ~/.ssh:/root/.ssh:ro
+      
+      # Configuration files
+      - ./backend/configs:/cave/backend/configs:ro
+      
+      # Output directory for generated infrastructure
+      - ./out:/cave/out:rw
+    
+    # Environment variables
+    environment:
+      # Source OpenStack credentials before running
+      - OS_PROJECT_DOMAIN_ID=default
+      - OS_USER_DOMAIN_ID=default
+      - OS_PROJECT_NAME=${OS_PROJECT_NAME}
+      - OS_USERNAME=${OS_USERNAME}
+      - OS_PASSWORD=${OS_PASSWORD}
+      - OS_AUTH_URL=${OS_AUTH_URL}
+      - OS_IDENTITY_API_VERSION=3
+      - OS_INTERFACE=public
+      - OS_REGION_NAME=${OS_REGION_NAME:-RegionOne}
+    
+    working_dir: /cave/backend
+    
+    # Example command - override as needed
+    # command: bash
+
+# Usage:
+# 1. Set required environment variables:
+#    export OPENSTACK_RC_PATH=/path/to/openrc.sh
+#    export SSH_KEY_PATH=/home/user/.ssh
+#    export OS_PROJECT_NAME=admin
+#    export OS_USERNAME=admin
+#    export OS_PASSWORD=password
+#    export OS_AUTH_URL=http://openstack:5000/v3
+#
+# 2. Build and run:
+#    docker-compose build
+#    docker-compose run --rm cave /bin/bash
+#
+# 3. Within the container, run deployment:
+#    source /.openrc  # If using OpenStack RC file
+#    ./make_it_so.sh configs/day1.json5 ~/.ssh/admin_key configs/users_day1.json --lab-prefix mylab
