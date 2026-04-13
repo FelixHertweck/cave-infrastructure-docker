@@ -18,7 +18,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel
+    pip install --upgrade pip setuptools wheel uv
 
 # Clone the repository and checkout specific commit
 RUN git config --global url."https://gitlab.opencode.de/".insteadOf "git@gitlab.opencode.de:" && \
