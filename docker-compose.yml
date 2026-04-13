@@ -30,19 +30,6 @@ services:
       # Output directory for generated infrastructure
       - ./out:/cave/out:rw
 
-    # Environment variables
-    environment:
-      # Source OpenStack credentials before running
-      - OS_PROJECT_DOMAIN_ID=default
-      - OS_USER_DOMAIN_ID=default
-      - OS_PROJECT_NAME=${OS_PROJECT_NAME}
-      - OS_USERNAME=${OS_USERNAME}
-      - OS_PASSWORD=${OS_PASSWORD}
-      - OS_AUTH_URL=${OS_AUTH_URL}
-      - OS_IDENTITY_API_VERSION=3
-      - OS_INTERFACE=public
-      - OS_REGION_NAME=${OS_REGION_NAME:-RegionOne}
-
     working_dir: /cave/backend
 
     # Example command - override as needed
