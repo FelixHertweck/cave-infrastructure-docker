@@ -51,15 +51,20 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     openssl \
     jq \
     wireguard-tools \
-    ca-certificates 
+    ca-certificates \
+    packer \
+    ansible \
+    git 
 
 RUN useradd -m -u 1000 cave
 
 COPY --chown=cave:cave entrypoint.sh /entrypoint.sh
+COPY --chown=cave:cave build-images.sh /cave/build-images.sh
 COPY --from=builder --chown=cave:cave /opt/venv /opt/venv
 COPY --from=builder --chown=cave:cave /tmp/cave /cave
 
 RUN chmod +x /entrypoint.sh && \
+    chmod +x /cave/build-images.sh && \
     chmod +x /cave/backend/make_it_so.sh && \
     chmod +x /cave/backend/exterminate.sh && \
     chmod +x /cave/backend/configs/generate_openstack_config.sh
