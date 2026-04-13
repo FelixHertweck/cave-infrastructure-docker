@@ -32,5 +32,6 @@ services:
 
     working_dir: /cave/backend
 
-    # Override default command to keep container running
-    command: bash
+    # Use deployment wrapper by default (can be overridden with: docker-compose run --rm cave bash)
+    entrypoint: /entrypoint.sh
+    command: /cave/deploy-wrapper.sh
