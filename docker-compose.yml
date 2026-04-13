@@ -32,5 +32,5 @@ services:
 
     working_dir: /cave/backend
 
-    # Example command - override as needed
-    # command: bash
+    # Override default command to keep container running
+    command: bash
