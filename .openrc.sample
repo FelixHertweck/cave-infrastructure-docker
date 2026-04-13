@@ -1,0 +1,26 @@
+#!/bin/bash
+# OpenStack RC file - Source this in the container for OpenStack credentials
+#
+# HOW TO USE:
+# 1. Download the RC file from OpenStack Dashboard (Project → API Access → Download OpenStack RC File)
+# 2. Copy it to .openrc in this directory
+# 3. IMPORTANT: Remove or comment out the interactive 'read -sr' line for automated deployments
+#    Change this line:
+#      echo "Please enter your OpenStack Password for project $OS_PROJECT_NAME as user $OS_USERNAME: "
+#      read -sr OS_PASSWORD_INPUT
+#      export OS_PASSWORD=$OS_PASSWORD_INPUT
+#    To this:
+#      export OS_PASSWORD=your-actual-password-here
+#
+# For reference, here's a minimal template:
+
+export OS_AUTH_URL=https://your-openstack-ip:5000/v3/
+export OS_PROJECT_ID=your-project-id
+export OS_PROJECT_NAME="admin"
+export OS_USER_DOMAIN_NAME="Default"
+export OS_PROJECT_DOMAIN_ID="default"
+export OS_USERNAME="admin"
+export OS_PASSWORD=your-password-here
+export OS_REGION_NAME="RegionOne"
+export OS_INTERFACE=public
+

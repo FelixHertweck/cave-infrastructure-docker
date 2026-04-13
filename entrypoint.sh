@@ -2,9 +2,12 @@
 set -e
 
 # Source OpenStack credentials if available
+# Use 'set -a' to export all variables in the sourced file
 if [ -f /.openrc ]; then
     echo "[INFO] Sourcing OpenStack credentials from .openrc..."
+    set -a
     source /.openrc
+    set +a
 fi
 
 # Validate that OS_PASSWORD is set (required for OpenStack CLI)
