@@ -1,0 +1,25 @@
+name: Cleanup Untagged Container Packages
+
+on:
+  # Runs daily at 2:00 AM
+  schedule:
+    - cron: '0 2 * * *'
+  # Run manually
+  workflow_dispatch:
+
+jobs:
+  delete-untagged-packages:
+    name: Delete Untagged Package Versions
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Delete untagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'cave-infrastructure-docker'
+          package-type: 'container'
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: 'true'
+          token: ${{ secrets.GITHUB_TOKEN }}
