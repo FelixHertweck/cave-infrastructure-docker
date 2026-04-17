@@ -12,9 +12,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 print_header() {
-    echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║         CAVE Infrastructure - Deployment Wrapper            ║${NC}"
-    echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n"
+    echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}" >&2
+    echo -e "${BLUE}║         CAVE Infrastructure - Deployment Wrapper            ║${NC}" >&2
+    echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n" >&2
 }
 
 print_error() {
@@ -22,11 +22,11 @@ print_error() {
 }
 
 print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}✓ $1${NC}" >&2
 }
 
 print_info() {
-    echo -e "${YELLOW}ℹ $1${NC}"
+    echo -e "${YELLOW}ℹ $1${NC}" >&2
 }
 
 validate_file() {
@@ -62,21 +62,21 @@ validate_ssh_key() {
 }
 
 show_usage() {
-    cat << EOF
+    cat << EOF >&2
 ${BLUE}Usage:${NC}
   $0 [OPTIONS]
   $0 <config-name> [OPTIONS]
 
 ${BLUE}Arguments:${NC}
-  config-name              Config file name (without .json5), e.g., 'day1'
+  config-name             Config file name (without .json5), e.g., 'day1'
                           If not provided, you'll be prompted to choose
 
 ${BLUE}Options:${NC}
   --wg                    Use WireGuard for VPN (default: OpenVPN)
   --lab-prefix PREFIX     Custom lab prefix (default: from .env or config name)
   --users FILE            User configuration file (default: users_<config>.json)
-  --dry-run              Show what would be executed without running
-  --help                 Show this help message
+  --dry-run               Show what would be executed without running
+  --help                  Show this help message
 
 ${BLUE}Examples:${NC}
   # Interactive mode - choose config
@@ -96,9 +96,9 @@ EOF
     
     # List available configs
     if [ -d "/cave/backend/configs" ]; then
-        find /cave/backend/configs -name "*.json5" -not -name ".*" | sed 's|.*/||; s|\.json5||' | sed "s|^|  - |"
+        find /cave/backend/configs -name "*.json5" -not -name ".*" | sed 's|.*/||; s|\.json5||' | sed "s|^|  - |" >&2
     else
-        echo "  (configs directory not found)"
+        echo "  (configs directory not found)" >&2
     fi
 }
 
