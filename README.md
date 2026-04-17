@@ -38,7 +38,7 @@ Edit the `.env` file to set your credentials, lab prefix, SSH key name, and netw
 If your OpenStack VMs cannot reach the internet, you likely need NAT for the external OpenStack network on your host machine. Run the initialization script on the host (requires root privileges):
 
 ```bash
-sudo ./post-openstack-init.sh
+sudo ./scripts/post-openstack-init.sh
 ```
 
 ### 4. Build CAVE Base Images
