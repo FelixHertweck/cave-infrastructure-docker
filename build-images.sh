@@ -1,64 +1,387 @@
 #!/bin/bash
-# Build CAVE Images using Packer and upload to OpenStack
-# This script clones the CAVE-Images repository and builds all images
+# Script to clone an images repository and run packer builds interactively
 
 set -e
 
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║          CAVE Infrastructure - Image Builder              ║"
-echo "╚════════════════════════════════════════════════════════════╝"
-echo ""
+# ─────────────────────────────────────────────
+#  COLORS & OUTPUT HELPERS
+# ─────────────────────────────────────────────
 
-# Check if OpenStack credentials are set
-if [ -z "$OS_PASSWORD" ]; then
-    echo "[ERROR] OS_PASSWORD is not set!"
-    echo "[ERROR] Make sure to source credentials first:"
-    echo "[ERROR]   source .openrc  OR  source .env"
-    exit 1
-fi
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# Variables
-CAVE_IMAGES_REPO="https://gitlab.opencode.de/BSI-Bund/cave/cave-images.git"
-CAVE_IMAGES_DIR="/tmp/cave-images"
-OUTPUT_DIR="${OUTPUT_DIR:-./out}"
+print_header()  {
+    echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}" >&2
+    echo -e "${BLUE}║            CAVE Infrastructure - Image Builder             ║${NC}" >&2
+    echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n" >&2
+}
+print_error()   { echo -e "${RED}✗ ERROR: $1${NC}" >&2; }
+print_success() { echo -e "${GREEN}✓ $1${NC}" >&2; }
+print_info()    { echo -e "${YELLOW}ℹ $1${NC}" >&2; }
 
-mkdir -p "$OUTPUT_DIR"
 
-echo "[INFO] Cloning CAVE-Images repository..."
-if [ -d "$CAVE_IMAGES_DIR" ]; then
-    echo "[INFO] Repository already exists, pulling latest changes..."
-    cd "$CAVE_IMAGES_DIR"
-    git pull
-else
-    git clone "$CAVE_IMAGES_REPO" "$CAVE_IMAGES_DIR"
-    cd "$CAVE_IMAGES_DIR"
-fi
+# ─────────────────────────────────────────────
+#  GLOBAL STATE (for cleanup trap)
+# ─────────────────────────────────────────────
 
-echo "[INFO] Repository ready at: $CAVE_IMAGES_DIR"
-echo ""
-echo "Available images to build:"
-echo "  - vpn"
-echo "  - ctfd"
-echo "  - etherpad"
-echo "  - dns"
-echo "  - recplast-website"
-echo "  - kali-vnc"
-echo ""
+TEMP_NETWORK_ID=""
+TEMP_ROUTER_ID=""
+TEMP_SUBNET_ID=""
 
-# Show available packer templates
-if [ -d "packer" ]; then
-    echo "[INFO] Available Packer templates:"
-    find packer -name "*.pkr.hcl" -o -name "*.json" | head -10
-fi
 
-echo ""
-echo "Next steps:"
-echo "1. Read the CAVE-Images README for detailed build instructions"
-echo "2. Run: packer build <template>"
-echo "3. Images will be uploaded to your OpenStack project"
-echo ""
-echo "For example:"
-echo "  cd $CAVE_IMAGES_DIR"
-echo "  packer init ."
-echo "  packer build -var-file=vars/vpn.pkrvars.hcl ."
-echo ""
+# ═════════════════════════════════════════════
+#  MAIN FLOW
+# ═════════════════════════════════════════════
+
+main() {
+    # --- Argument validation ---
+    REPO_URL=${1:-https://gitlab.opencode.de/BSI-Bund/cave/cave-images.git}
+    COMMIT_HASH=${2:-main}
+
+    if [ $# -eq 0 ]; then
+        print_info "No repository provided: defaulting to BSI cave images on branch/main."
+        print_info "Using repository: $REPO_URL"
+        print_info "Using ref: $COMMIT_HASH"
+    elif [ $# -eq 1 ]; then
+        print_info "Using repository: $REPO_URL"
+        print_info "Using default ref: $COMMIT_HASH"
+    else
+        print_info "Using repository: $REPO_URL"
+        print_info "Using ref: $COMMIT_HASH"
+    fi
+
+    print_header
+
+    # --- Prerequisites ---
+    check_openstack_credentials
+    check_packer_installed
+    setup_security_group_rules
+    setup_ssh_key
+
+    # --- Clone repository ---
+    CLONE_DIR=$(mktemp -d -t cave-images-XXXXXX)
+    clone_repository "$REPO_URL" "$COMMIT_HASH" "$CLONE_DIR"
+
+    # --- Discover images ---
+    pushd "$CLONE_DIR" >/dev/null
+    mapfile -t IMAGES < <(find . -type f -name "*.pkr.hcl" \
+        | sed -r 's|/[^/]+$||' | sort -u | sed 's|^\./||')
+
+    if [ ${#IMAGES[@]} -eq 0 ]; then
+        print_error "No packer templates (*.pkr.hcl) found in the repository."
+        popd >/dev/null
+        rm -rf "$CLONE_DIR"
+        exit 1
+    fi
+
+    # --- User selection ---
+    echo ""
+    print_info "Discovered the following images:"
+    for i in "${!IMAGES[@]}"; do
+        echo -e "  $((i+1))) ${YELLOW}${IMAGES[$i]}${NC}"
+    done
+    echo -e "  A) All images"
+    echo -e "  Q) Quit"
+    echo ""
+    read -p "Which image do you want to build? [1-${#IMAGES[@]}, A, Q]: " CHOICE
+
+    # --- Dispatch ---
+    case "$CHOICE" in
+        [0-9]*)
+            if [ "$CHOICE" -ge 1 ] && [ "$CHOICE" -le "${#IMAGES[@]}" ]; then
+                build_image "${IMAGES[$((CHOICE-1))]}"
+            else
+                print_error "Invalid selection."
+                exit 1
+            fi
+            ;;
+        A|a)
+            for img in "${IMAGES[@]}"; do
+                build_image "$img"
+            done
+            ;;
+        Q|q)
+            print_info "Exiting without building."
+            ;;
+        *)
+            print_error "Invalid choice."
+            exit 1
+            ;;
+    esac
+
+    # --- Cleanup ---
+    popd >/dev/null
+    rm -rf "$CLONE_DIR"
+    print_success "Done."
+}
+
+
+# ═════════════════════════════════════════════
+#  FUNCTIONS
+# ═════════════════════════════════════════════
+
+# ── Credentials & Prerequisites ──────────────
+
+check_openstack_credentials() {
+    if [ -f /.openrc ]; then
+        print_info "Sourcing OpenStack credentials from /.openrc..."
+        set -a
+        source /.openrc
+        set +a
+    fi
+
+    if [ -z "$OS_AUTH_URL" ] || [ -z "$OS_PASSWORD" ]; then
+        print_error "OpenStack credentials are not set."
+        print_info "Please ensure that your .openrc or .env file is properly mapped and sourced."
+        exit 1
+    fi
+
+    # Unset conflicting domain variables to prevent packer crashes
+    export OS_DOMAIN_NAME="${OS_DOMAIN_NAME:-${OS_USER_DOMAIN_NAME:-Default}}"
+    unset OS_DOMAIN_ID
+    unset OS_USER_DOMAIN_ID
+    unset OS_USER_DOMAIN_NAME
+}
+
+check_packer_installed() {
+    if [ ! -x "$(command -v packer)" ]; then
+        print_error "Packer is not installed or not in PATH."
+        exit 1
+    fi
+}
+
+setup_security_group_rules() {
+    print_info "Ensuring 'default' security group allows SSH and ICMP..."
+    openstack security group rule create --protocol icmp --ingress default >/dev/null 2>&1 || true
+    openstack security group rule create --protocol tcp --dst-port 22:22 --ingress default >/dev/null 2>&1 || true
+}
+
+setup_ssh_key() {
+    if [ -n "$SSH_KEY_NAME" ]; then
+        SSH_KEY_PATH="/home/cave/.ssh/$SSH_KEY_NAME"
+        if [ -f "$SSH_KEY_PATH" ]; then
+            print_success "SSH key found: $SSH_KEY_NAME"
+            export PACKER_SSH_KEY="$SSH_KEY_PATH"
+        else
+            print_info "SSH key $SSH_KEY_NAME defined in .env but not found at $SSH_KEY_PATH (some builds might not need it)."
+        fi
+    fi
+}
+
+# ── Repository ───────────────────────────────
+
+clone_repository() {
+    local repo_url=$1
+    local commit_hash=$2
+    local clone_dir=$3
+
+    print_info "Cloning $repo_url (Ref: $commit_hash) into $clone_dir..."
+    git clone "$repo_url" "$clone_dir"
+    pushd "$clone_dir" >/dev/null
+    git checkout "$commit_hash"
+    popd >/dev/null
+    print_success "Repository cloned successfully."
+}
+
+# ── Network ──────────────────────────────────
+
+create_temp_network() {
+    print_info "Creating temporary internal network for build..."
+
+    TEMP_NETWORK_ID=$(openstack network create --format value -c id \
+        "temp-packer-build-$(date +%s)") \
+        || { print_error "Failed to create temporary network"; return 1; }
+    print_success "Created temporary network: $TEMP_NETWORK_ID"
+
+    local subnet_name="temp-packer-subnet-$(date +%s)"
+    TEMP_SUBNET_ID=$(openstack subnet create \
+        --network "$TEMP_NETWORK_ID" \
+        --subnet-range "192.168.255.0/24" \
+        "$subnet_name" --format value -c id) \
+        || { print_error "Failed to create subnet"; return 1; }
+    print_success "Created temporary subnet: $TEMP_SUBNET_ID"
+
+    local external_net
+    external_net=$(openstack network list --external -f value -c ID | head -n 1)
+
+    if [ -n "$external_net" ]; then
+        print_info "External network found — connecting via router..."
+        local router_name="temp-packer-router-$(date +%s)"
+        TEMP_ROUTER_ID=$(openstack router create --format value -c id "$router_name") \
+            || { print_error "Failed to create router"; return 1; }
+        print_success "Created temporary router: $TEMP_ROUTER_ID"
+
+        openstack router set --external-gateway "$external_net" "$TEMP_ROUTER_ID" >/dev/null 2>&1 \
+            || { print_error "Failed to set external gateway"; return 1; }
+        openstack router add subnet "$TEMP_ROUTER_ID" "$TEMP_SUBNET_ID" >/dev/null 2>&1 \
+            || { print_error "Failed to add subnet to router"; return 1; }
+        print_success "Router connected to subnet and external network"
+    else
+        print_info "No external network found. Temporary network is isolated (internal only)."
+    fi
+}
+
+cleanup_temp_network() {
+    if [ -n "$TEMP_ROUTER_ID" ] && [ -n "$TEMP_SUBNET_ID" ]; then
+        print_info "Removing subnet from temporary router..."
+        openstack router remove subnet "$TEMP_ROUTER_ID" "$TEMP_SUBNET_ID" >/dev/null 2>&1 \
+            || print_info "Failed to remove subnet from router"
+    fi
+
+    if [ -n "$TEMP_ROUTER_ID" ]; then
+        print_info "Cleaning up temporary router: $TEMP_ROUTER_ID"
+        openstack router unset --external-gateway "$TEMP_ROUTER_ID" >/dev/null 2>&1 || true
+        openstack router delete "$TEMP_ROUTER_ID" >/dev/null 2>&1 \
+            || print_info "Failed to delete temporary router"
+        TEMP_ROUTER_ID=""
+    fi
+
+    if [ -n "$TEMP_SUBNET_ID" ]; then
+        print_info "Cleaning up temporary subnet: $TEMP_SUBNET_ID"
+        openstack subnet delete "$TEMP_SUBNET_ID" >/dev/null 2>&1 \
+            || print_info "Failed to delete temporary subnet"
+        TEMP_SUBNET_ID=""
+    fi
+
+    if [ -n "$TEMP_NETWORK_ID" ]; then
+        print_info "Cleaning up temporary network: $TEMP_NETWORK_ID"
+        openstack network delete "$TEMP_NETWORK_ID" >/dev/null 2>&1 \
+            || print_info "Failed to delete temporary network"
+        TEMP_NETWORK_ID=""
+    fi
+}
+
+# ── Packer Template Patching ─────────────────
+
+patch_tls() {
+    if [[ "${OS_INSECURE,,}" == "true" || "$OS_INSECURE" == "1" ]]; then
+        print_info "OS_INSECURE enabled — patching template to skip TLS verification..."
+        find . -maxdepth 1 -name "*.pkr.hcl" \
+            -exec sed -i '/source "openstack"/a \  insecure = true' {} +
+    fi
+}
+
+patch_config_drive() {
+    print_info "Enforcing config_drive for secure SSH key and user-data injection..."
+    find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
+        if ! grep -q 'config_drive' "$file"; then
+            sed -i '/source "openstack"/a \  config_drive = true' "$file"
+        fi
+    done
+}
+
+patch_flavor_map() {
+    if [ -n "$OS_FLAVOR_MAP" ]; then
+        print_info "Applying flavor mappings ($OS_FLAVOR_MAP)..."
+        IFS=',' read -ra MAPPINGS <<< "$OS_FLAVOR_MAP"
+        for map in "${MAPPINGS[@]}"; do
+            local old="${map%%:*}"
+            local new="${map##*:}"
+            find . -maxdepth 1 -name "*.pkr.hcl" \
+                -exec sed -i -E "s/flavor[[:space:]]*=[[:space:]]*\"$old\"/flavor = \"$new\"/g" {} +
+        done
+    fi
+}
+
+patch_network() {
+    local build_network_id=$1
+    find . -maxdepth 1 -name "*.pkr.hcl" \
+        -exec sed -i -E \
+            's/networks[[:space:]]*=[[:space:]]*\[".*"\]/networks = ["'"$build_network_id"'"]/' {} +
+}
+
+patch_floating_ip() {
+    if [ -n "$OS_BUILD_FLOATING_IP_NETWORK_ID" ]; then
+        if [[ "${OS_BUILD_FLOATING_IP_NETWORK_ID,,}" == "none" ]]; then
+            print_info "Floating IPs disabled — using direct internal SSH..."
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  use_floating_ip = false' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  ssh_interface = "private"' {} +
+        else
+            print_info "Using specified floating IP network: $OS_BUILD_FLOATING_IP_NETWORK_ID"
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" \
+                -exec sed -i -E '/source "openstack"/a \  floating_ip_network = "'"$OS_BUILD_FLOATING_IP_NETWORK_ID"'"' {} +
+        fi
+    else
+        local auto_external_net
+        auto_external_net=$(openstack network list --external -f value -c ID | head -n 1)
+        if [ -n "$auto_external_net" ]; then
+            print_info "Auto-discovered external network for floating IPs: $auto_external_net"
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" \
+                -exec sed -i -E '/source "openstack"/a \  floating_ip_network = "'"$auto_external_net"'"' {} +
+        else
+            print_info "No external network found — disabling floating IPs, using internal SSH..."
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  use_floating_ip = false' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  ssh_interface = "private"' {} +
+        fi
+    fi
+}
+
+# ── Build ─────────────────────────────────────
+
+build_image() {
+    local img_dir=$1
+
+    # Reset temp resource tracking for this build
+    TEMP_NETWORK_ID=""
+    TEMP_ROUTER_ID=""
+    TEMP_SUBNET_ID=""
+
+    print_info "=================================================="
+    print_info "Building image in $img_dir..."
+    print_info "=================================================="
+    pushd "$img_dir" >/dev/null
+
+    # Apply template patches
+    patch_tls
+    patch_config_drive
+    patch_flavor_map
+
+    # Resolve build network
+    local build_network_id=""
+    if [ -n "$OS_BUILD_NETWORK_ID" ]; then
+        print_info "Using specified build network: $OS_BUILD_NETWORK_ID"
+        build_network_id="$OS_BUILD_NETWORK_ID"
+    else
+        create_temp_network || { popd >/dev/null; return 1; }
+        build_network_id="$TEMP_NETWORK_ID"
+    fi
+    patch_network "$build_network_id"
+
+    # Resolve floating IP
+    patch_floating_ip
+
+    # Run Packer
+    packer init . \
+        || { print_error "Failed to initialize packer plugins in $img_dir"; popd >/dev/null; return 1; }
+
+    packer plugins install github.com/hashicorp/openstack \
+        || print_info "Openstack plugin might already be installed or unavailable to install directly."
+
+    packer build .
+    local result=$?
+
+    popd >/dev/null
+
+    if [ $result -eq 0 ]; then
+        print_success "Successfully built $img_dir"
+    else
+        print_error "Failed to build $img_dir"
+        exit 1
+    fi
+}
+
+
+# ═════════════════════════════════════════════
+#  TRAPS & ENTRY POINT
+# ═════════════════════════════════════════════
+
+trap cleanup_temp_network EXIT INT TERM
+
+main "$@"
