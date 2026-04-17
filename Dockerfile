@@ -52,21 +52,29 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     jq \
     wireguard-tools \
     ca-certificates \
-    packer \
     ansible \
-    git 
+    git \
+    wget \
+    unzip
+
+RUN wget https://releases.hashicorp.com/packer/1.10.2/packer_1.10.2_linux_amd64.zip && \
+    unzip packer_1.10.2_linux_amd64.zip && \
+    mv packer /usr/local/bin/ && \
+    rm packer_1.10.2_linux_amd64.zip
 
 RUN useradd -m -u 1000 cave
 
 COPY --chown=cave:cave entrypoint.sh /entrypoint.sh
-COPY --chown=cave:cave build-images.sh /cave/build-images.sh
-COPY --chown=cave:cave deploy-wrapper.sh /cave/deploy-wrapper.sh
+COPY --chown=cave:cave main-menu.sh /cave/backend/main-menu.sh
+COPY --chown=cave:cave deploy-wrapper.sh /cave/backend/deploy-wrapper.sh
+COPY --chown=cave:cave build-images.sh /cave/backend/build-images.sh
 COPY --from=builder --chown=cave:cave /opt/venv /opt/venv
 COPY --from=builder --chown=cave:cave /tmp/cave /cave
 
 RUN chmod +x /entrypoint.sh && \
-    chmod +x /cave/build-images.sh && \
-    chmod +x /cave/deploy-wrapper.sh && \
+    chmod +x /cave/backend/main-menu.sh && \
+    chmod +x /cave/backend/deploy-wrapper.sh && \
+    chmod +x /cave/backend/build-images.sh && \
     chmod +x /cave/backend/make_it_so.sh && \
     chmod +x /cave/backend/exterminate.sh && \
     chmod +x /cave/backend/configs/generate_openstack_config.sh
@@ -81,4 +89,4 @@ ENV PATH="/opt/venv/bin:$PATH" \
 WORKDIR /cave/backend
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["./make_it_so.sh", "--help"]
+CMD ["/cave/backend/main-menu.sh"]
