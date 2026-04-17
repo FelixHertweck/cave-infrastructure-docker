@@ -3,7 +3,7 @@ services:
     # Use pre-built image from GitHub Container Registry
     # main tag points to the latest commit on the main branch
     # Recommended to use latest tag or specify a version if available
-    image: ghcr.io/felixhertweck/cave-infrastructure-docker:build-deploy-wrapper
+    image: ghcr.io/felixhertweck/cave-infrastructure-docker:main
 
     # Load environment variables from .env file
     env_file: .env
