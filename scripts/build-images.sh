@@ -14,19 +14,22 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 print_header()  {
-    echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}" >&2
-    echo -e "${BLUE}║            CAVE Infrastructure - Image Builder             ║${NC}" >&2
-    echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n" >&2
+    if [ "$QUIET_MODE" -eq 0 ]; then
+        echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}" >&2
+        echo -e "${BLUE}║            CAVE Infrastructure - Image Builder             ║${NC}" >&2
+        echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n" >&2
+    fi
 }
 print_error()   { echo -e "${RED}✗ ERROR: $1${NC}" >&2; }
-print_success() { echo -e "${GREEN}✓ $1${NC}" >&2; }
-print_info()    { echo -e "${YELLOW}ℹ $1${NC}" >&2; }
+print_success() { if [ "$QUIET_MODE" -eq 0 ]; then echo -e "${GREEN}✓ $1${NC}" >&2; fi; }
+print_info()    { if [ "$QUIET_MODE" -eq 0 ]; then echo -e "${YELLOW}ℹ $1${NC}" >&2; fi; }
 
 
 # ─────────────────────────────────────────────
 #  GLOBAL STATE (for cleanup trap)
 # ─────────────────────────────────────────────
 
+QUIET_MODE=0
 TEMP_NETWORK_ID=""
 TEMP_ROUTER_ID=""
 TEMP_SUBNET_ID=""
@@ -37,6 +40,19 @@ TEMP_SUBNET_ID=""
 # ═════════════════════════════════════════════
 
 main() {
+    # --- Parse flags ---
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -q|--quiet)
+                QUIET_MODE=1
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
     # --- Argument validation ---
     REPO_URL=${1:-https://gitlab.opencode.de/BSI-Bund/cave/cave-images.git}
     COMMIT_HASH=${2:-main}
@@ -61,9 +77,11 @@ main() {
     setup_security_group_rules
     setup_ssh_key
 
-    # --- Clone repository ---
-    CLONE_DIR=$(mktemp -d -t cave-images-XXXXXX)
-    clone_repository "$REPO_URL" "$COMMIT_HASH" "$CLONE_DIR"
+    # --- Clone or update repository ---
+    # Generate a stable directory name based on repo URL hash
+    local repo_hash=$(echo -n "$REPO_URL" | md5sum | cut -c1-8)
+    CLONE_DIR="/tmp/cave-images-${repo_hash}"
+    clone_or_update_repository "$REPO_URL" "$COMMIT_HASH" "$CLONE_DIR"
 
     # --- Discover images ---
     pushd "$CLONE_DIR" >/dev/null
@@ -73,49 +91,62 @@ main() {
     if [ ${#IMAGES[@]} -eq 0 ]; then
         print_error "No packer templates (*.pkr.hcl) found in the repository."
         popd >/dev/null
-        rm -rf "$CLONE_DIR"
         exit 1
     fi
 
-    # --- User selection ---
-    echo ""
-    print_info "Discovered the following images:"
-    for i in "${!IMAGES[@]}"; do
-        echo -e "  $((i+1))) ${YELLOW}${IMAGES[$i]}${NC}"
-    done
-    echo -e "  A) All images"
-    echo -e "  Q) Quit"
-    echo ""
-    read -p "Which image do you want to build? [1-${#IMAGES[@]}, A, Q]: " CHOICE
+    # --- Interactive build loop ---
+    while true; do
+        # --- User selection ---
+        echo ""
+        print_info "Discovered the following images:"
+        for i in "${!IMAGES[@]}"; do
+            echo -e "  $((i+1))) ${YELLOW}${IMAGES[$i]}${NC}"
+        done
+        echo -e "  A) All images"
+        echo -e "  Q) Quit"
+        echo ""
+        read -p "Which image do you want to build? [1-${#IMAGES[@]}, A, Q] or space-separated numbers: " CHOICE
 
-    # --- Dispatch ---
-    case "$CHOICE" in
-        [0-9]*)
-            if [ "$CHOICE" -ge 1 ] && [ "$CHOICE" -le "${#IMAGES[@]}" ]; then
-                build_image "${IMAGES[$((CHOICE-1))]}"
-            else
-                print_error "Invalid selection."
-                exit 1
-            fi
-            ;;
-        A|a)
-            for img in "${IMAGES[@]}"; do
-                build_image "$img"
-            done
-            ;;
-        Q|q)
-            print_info "Exiting without building."
-            ;;
-        *)
-            print_error "Invalid choice."
-            exit 1
-            ;;
-    esac
+        # --- Dispatch ---
+        case "$CHOICE" in
+            A|a)
+                for img in "${IMAGES[@]}"; do
+                    build_image "$img"
+                done
+                ;;
+            Q|q)
+                print_info "Exiting without building."
+                break
+                ;;
+            *)
+                # Check if it's a valid input (numbers and spaces)
+                if [[ "$CHOICE" =~ ^[0-9\ ]+$ ]]; then
+                    # Parse space-separated numbers
+                    local valid=true
+                    for num in $CHOICE; do
+                        if [ "$num" -lt 1 ] || [ "$num" -gt "${#IMAGES[@]}" ]; then
+                            print_error "Invalid selection: $num"
+                            valid=false
+                            break
+                        fi
+                    done
+                    
+                    if [ "$valid" = true ]; then
+                        # Build selected images
+                        for num in $CHOICE; do
+                            build_image "${IMAGES[$((num-1))]}"
+                        done
+                    fi
+                else
+                    print_error "Invalid choice. Please enter numbers (1-${#IMAGES[@]}), A, Q, or space-separated numbers."
+                fi
+                ;;
+        esac
+    done
 
     # --- Cleanup ---
     popd >/dev/null
-    rm -rf "$CLONE_DIR"
-    print_success "Done."
+    print_success "Done. Repository cached at $CLONE_DIR for future runs."
 }
 
 
@@ -172,6 +203,31 @@ setup_ssh_key() {
 }
 
 # ── Repository ───────────────────────────────
+
+clone_or_update_repository() {
+    local repo_url=$1
+    local commit_hash=$2
+    local clone_dir=$3
+
+    if [ -d "$clone_dir/.git" ]; then
+        # Repository already exists, update it
+        print_info "Repository already exists at $clone_dir, updating..."
+        pushd "$clone_dir" >/dev/null
+        git fetch origin
+        git checkout "$commit_hash"
+        popd >/dev/null
+        print_success "Repository updated successfully."
+    else
+        # Repository doesn't exist, clone it
+        print_info "Cloning $repo_url (Ref: $commit_hash) into $clone_dir..."
+        mkdir -p "$clone_dir"
+        git clone "$repo_url" "$clone_dir"
+        pushd "$clone_dir" >/dev/null
+        git checkout "$commit_hash"
+        popd >/dev/null
+        print_success "Repository cloned successfully."
+    fi
+}
 
 clone_repository() {
     local repo_url=$1
@@ -358,13 +414,23 @@ build_image() {
     patch_floating_ip
 
     # Run Packer
-    packer init . \
-        || { print_error "Failed to initialize packer plugins in $img_dir"; popd >/dev/null; return 1; }
+    if [ "$QUIET_MODE" -eq 0 ]; then
+        packer init . \
+            || { print_error "Failed to initialize packer plugins in $img_dir"; popd >/dev/null; return 1; }
 
-    packer plugins install github.com/hashicorp/openstack \
-        || print_info "Openstack plugin might already be installed or unavailable to install directly."
+        packer plugins install github.com/hashicorp/openstack \
+            || print_info "Openstack plugin might already be installed or unavailable to install directly."
 
-    packer build .
+        packer build .
+    else
+        packer init . >/dev/null 2>&1 \
+            || { print_error "Failed to initialize packer plugins in $img_dir"; popd >/dev/null; return 1; }
+
+        packer plugins install github.com/hashicorp/openstack >/dev/null 2>&1 \
+            || true
+
+        packer build -quiet . >/dev/null 2>&1
+    fi
     local result=$?
 
     popd >/dev/null
@@ -373,7 +439,6 @@ build_image() {
         print_success "Successfully built $img_dir"
     else
         print_error "Failed to build $img_dir"
-        exit 1
     fi
 }
 
