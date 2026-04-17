@@ -315,8 +315,11 @@ cleanup_temp_network() {
 patch_tls() {
     if [[ "${OS_INSECURE,,}" == "true" || "$OS_INSECURE" == "1" ]]; then
         print_info "OS_INSECURE enabled — patching template to skip TLS verification..."
-        find . -maxdepth 1 -name "*.pkr.hcl" \
-            -exec sed -i '/source "openstack"/a \  insecure = true' {} +
+        find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
+            if ! grep -q 'insecure' "$file"; then
+                sed -i '/source "openstack"/a \  insecure = true' "$file"
+            fi
+        done
     fi
 }
 
@@ -344,37 +347,58 @@ patch_flavor_map() {
 
 patch_network() {
     local build_network_id=$1
-    find . -maxdepth 1 -name "*.pkr.hcl" \
-        -exec sed -i -E \
-            's/networks[[:space:]]*=[[:space:]]*\[".*"\]/networks = ["'"$build_network_id"'"]/' {} +
+    find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
+        # Only patch if networks line doesn't already point to the build network
+        if ! grep -q "networks.*=.*\[\"$build_network_id\"\]" "$file"; then
+            sed -i -E "s/networks[[:space:]]*=[[:space:]]*\[\"[^\"]*\"\]/networks = [\"$build_network_id\"]/" "$file"
+        fi
+    done
 }
 
 patch_floating_ip() {
     if [ -n "$OS_BUILD_FLOATING_IP_NETWORK_ID" ]; then
         if [[ "${OS_BUILD_FLOATING_IP_NETWORK_ID,,}" == "none" ]]; then
             print_info "Floating IPs disabled — using direct internal SSH..."
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  use_floating_ip = false' {} +
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  ssh_interface = "private"' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
+                sed -i -E '/floating_ip_network[[:space:]]*=/d' "$file"
+                if ! grep -q 'use_floating_ip' "$file"; then
+                    sed -i '/source "openstack"/a \  use_floating_ip = false' "$file"
+                fi
+                if ! grep -q 'ssh_interface' "$file"; then
+                    sed -i '/source "openstack"/a \  ssh_interface = "private"' "$file"
+                fi
+            done
         else
             print_info "Using specified floating IP network: $OS_BUILD_FLOATING_IP_NETWORK_ID"
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
-            find . -maxdepth 1 -name "*.pkr.hcl" \
-                -exec sed -i -E '/source "openstack"/a \  floating_ip_network = "'"$OS_BUILD_FLOATING_IP_NETWORK_ID"'"' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
+                sed -i -E '/floating_ip_network[[:space:]]*=/d' "$file"
+                if ! grep -q 'floating_ip_network' "$file"; then
+                    sed -i '/source "openstack"/a \  floating_ip_network = "'"$OS_BUILD_FLOATING_IP_NETWORK_ID"'"' "$file"
+                fi
+            done
         fi
     else
         local auto_external_net
         auto_external_net=$(openstack network list --external -f value -c ID | head -n 1)
         if [ -n "$auto_external_net" ]; then
             print_info "Auto-discovered external network for floating IPs: $auto_external_net"
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
-            find . -maxdepth 1 -name "*.pkr.hcl" \
-                -exec sed -i -E '/source "openstack"/a \  floating_ip_network = "'"$auto_external_net"'"' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
+                sed -i -E '/floating_ip_network[[:space:]]*=/d' "$file"
+                if ! grep -q 'floating_ip_network' "$file"; then
+                    sed -i '/source "openstack"/a \  floating_ip_network = "'"$auto_external_net"'"' "$file"
+                fi
+            done
         else
             print_info "No external network found — disabling floating IPs, using internal SSH..."
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/floating_ip_network[[:space:]]*=/d' {} +
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  use_floating_ip = false' {} +
-            find . -maxdepth 1 -name "*.pkr.hcl" -exec sed -i -E '/source "openstack"/a \  ssh_interface = "private"' {} +
+            find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
+                sed -i -E '/floating_ip_network[[:space:]]*=/d' "$file"
+                if ! grep -q 'use_floating_ip' "$file"; then
+                    sed -i '/source "openstack"/a \  use_floating_ip = false' "$file"
+                fi
+                if ! grep -q 'ssh_interface' "$file"; then
+                    sed -i '/source "openstack"/a \  ssh_interface = "private"' "$file"
+                fi
+            done
         fi
     fi
 }
