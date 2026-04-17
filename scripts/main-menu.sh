@@ -28,10 +28,10 @@ main() {
 
     case "$choice" in
         1)
-            exec /cave/backend/deploy-wrapper.sh
+            exec /cave/deploy-wrapper.sh
             ;;
         2)
-            exec /cave/backend/build-images.sh
+            exec /cave/build-images.sh
             ;;
         3)
             # Find possible lab prefixes if possible
