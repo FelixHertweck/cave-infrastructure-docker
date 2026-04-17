@@ -1,4 +1,14 @@
 services:
+  # DinD is needed for building the cave images
+  dind:
+    image: docker:dind
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=
+    volumes:
+      - dind-data:/var/lib/docker
+    network_mode: host
+
   cave:
     # Use pre-built image from GitHub Container Registry
     # main tag points to the latest commit on the main branch
@@ -16,6 +26,13 @@ services:
     cap_add:
       - NET_ADMIN
 
+    depends_on:
+      - dind
+
+    environment:
+      # Use the Docker daemon provided by the DinD service.
+      - DOCKER_HOST=tcp://127.0.0.1:2375
+
     # Mount volumes for configuration and SSH keys
     volumes:
       # OpenStack RC file (optional, used if present; credentials can also come from .env)
@@ -31,3 +48,6 @@ services:
       - ./out:/cave/out:rw
 
     network_mode: host
+
+volumes:
+  dind-data:

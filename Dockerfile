@@ -44,6 +44,9 @@ LABEL description="Docker container for CAVE Infrastructure deployment"
 
 COPY --from=tofu /usr/local/bin/tofu /usr/local/bin/tofu
 
+# Setup docker-buildx from official binary
+COPY --from=docker/buildx-bin /buildx /usr/libexec/docker/cli-plugins/docker-buildx
+
 # Combine all apt-get calls into one layer to reduce layer count
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -55,7 +58,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ansible \
     git \
     wget \
-    unzip
+    unzip \
+    docker.io
 
 RUN wget https://releases.hashicorp.com/packer/1.10.2/packer_1.10.2_linux_amd64.zip && \
     unzip packer_1.10.2_linux_amd64.zip && \
