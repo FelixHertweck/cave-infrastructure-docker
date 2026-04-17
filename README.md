@@ -52,8 +52,24 @@ docker compose run --rm cave /cave/build-images.sh
 You can also specify a custom repository and a specific branch or commit hash:
 ```bash
 # Example: Using a custom repo and the 'my-feature-branch' branch
-docker compose run --rm cave /cave/build-images.sh https://git.example.com/custom-images.git my-feature-branch/commit-hash
+docker compose run --rm cave /cave/build-images.sh https://git.example.com/custom-images.git my-feature-branch
 ```
+
+The standard image repository expects a set of mapped OpenStack flavors. The default mapping in this repo translates the upstream image names to the flavors used by your cloud.
+
+Typical flavor mapping examples:
+- `client-medium`
+- `server-small`
+- `server-large`
+- `server-windows`
+- `m1.small`
+
+To inspect available flavors in your OpenStack environment, run:
+```bash
+docker compose run --rm cave openstack flavor list
+```
+
+If the flavor names differ from the standard repository, add the correct mapping to your `.env` file using `OS_FLAVOR_MAP`.
 
 Follow the interactive prompts to build the necessary images. Wait until the builds finish successfully.
 
