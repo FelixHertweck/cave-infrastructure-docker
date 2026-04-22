@@ -1,23 +1,34 @@
-name: docker.yml
+name: Build and Push Docker Image
 
 on:
-  push:
-    branches: [ "main" ]
-    paths-ignore: [ "**/*.md" ]
-    tags:
-      - "v*.*"
-      - "v*.*.*"
-  pull_request:
-    branches: [ "main" ]
-    paths-ignore: [ "**/*.md" ]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      container_name:
+        description: "Name of the container image (without registry prefix)"
+        required: true
+        type: string
+      context:
+        description: "Build context path (relative to repo root)"
+        required: true
+        type: string
+        default: "."
+      dockerfile:
+        description: "Path to Dockerfile (relative to context)"
+        required: true
+        type: string
+        default: "Dockerfile"
+      platforms:
+        description: "Target platforms for build (comma-separated)"
+        required: false
+        type: string
+        default: "linux/amd64,linux/arm64"
 
 permissions:
   contents: read
 
 jobs:
-  docker:
-    name: Docker Build & Publish
+  build-and-push:
+    name: Build & Push - ${{ inputs.container_name }}
     runs-on: "ubuntu-24.04"
     timeout-minutes: 30
 
@@ -58,9 +69,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.container_name }}
           labels: |
-            org.opencontainers.image.title=${{ github.repository.name }}
+            org.opencontainers.image.title=${{ inputs.container_name }}
             org.opencontainers.image.authors=Felix Hertweck
 
       - name: Build and push Docker image
@@ -68,9 +79,9 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           # For PRs, only build for current platform (faster feedback)
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          file: ./Dockerfile
-          context: .
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || inputs.platforms }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          context: ${{ inputs.context }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
