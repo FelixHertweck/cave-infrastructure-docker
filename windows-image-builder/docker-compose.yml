@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  windows-image-builder:
+    image: ghcr.io/felixhertweck/cave-infrastructure-windows-image-builder:latest
+    container_name: cave-windows-builder
+
+    # Interactive mode - keep running for manual commands
+    stdin_open: true
+    tty: true
+
+    # Required for KVM acceleration (QEMU performance)
+    privileged: true
+    devices:
+      - /dev/kvm:/dev/kvm
+
+    environment:
+      - SPICE_PORT=5900
+      - SPICE_HOST=127.0.0.1
+      - VM_MEMORY=8G
+      - VM_CPUS=4
+      - LOCAL_TIMEZONE=Europe/Berlin
+      - DISK_SIZE=64G
+
+    volumes:
+      # Input: Windows installation ISOs and Virtio drivers
+      - ./iso-input:/work/iso:ro
+      
+      # Output: Generated QCOW2 disk images
+      - ./output:/work/output:rw
+      
+      # Working directory (swtpm sockets, scratch ISO, etc.)
+      - ./workspace:/work/workspace:rw
+
+    working_dir: /work/workspace
+
+    ports:
+      - "5900:5900"  # SPICE VNC
+      - "5901:5901"  # Alternative SPICE VNC (for simultaneous builds)
+
+    healthcheck:
+      test: ["CMD", "test", "-d", "/work/workspace"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
