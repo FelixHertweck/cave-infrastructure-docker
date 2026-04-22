@@ -54,17 +54,22 @@ main() {
     done
 
     # --- Argument validation ---
-    REPO_URL=${1:-https://gitlab.opencode.de/BSI-Bund/cave/cave-images.git}
-    COMMIT_HASH=${2:-main}
+    REPO_URL="$1"
+    COMMIT_HASH="$2"
+    LOCAL_MODE=0
 
     if [ $# -eq 0 ]; then
-        print_info "No repository provided: defaulting to BSI cave images on branch/main."
-        print_info "Using repository: $REPO_URL"
-        print_info "Using ref: $COMMIT_HASH"
+        # No arguments: use local repository
+        print_info "No arguments provided: using standard cave-images submodule at /cave/backend/submodule/cave-images"
+        CLONE_DIR="/cave/backend/submodule/cave-images"
+        LOCAL_MODE=1
     elif [ $# -eq 1 ]; then
+        # One argument: repo URL with default main branch
         print_info "Using repository: $REPO_URL"
-        print_info "Using default ref: $COMMIT_HASH"
+        print_info "Using default ref: main"
+        COMMIT_HASH="main"
     else
+        # Two arguments: both specified
         print_info "Using repository: $REPO_URL"
         print_info "Using ref: $COMMIT_HASH"
     fi
@@ -77,11 +82,20 @@ main() {
     setup_security_group_rules
     setup_ssh_key
 
-    # --- Clone or update repository ---
-    # Generate a stable directory name based on repo URL hash
-    local repo_hash=$(echo -n "$REPO_URL" | md5sum | cut -c1-8)
-    CLONE_DIR="/tmp/cave-images-${repo_hash}"
-    clone_or_update_repository "$REPO_URL" "$COMMIT_HASH" "$CLONE_DIR"
+    # --- Clone or update repository (unless in local mode) ---
+    if [ $LOCAL_MODE -eq 0 ]; then
+        # Generate a stable directory name based on repo URL hash
+        local repo_hash=$(echo -n "$REPO_URL" | md5sum | cut -c1-8)
+        CLONE_DIR="/tmp/cave-images-${repo_hash}"
+        clone_or_update_repository "$REPO_URL" "$COMMIT_HASH" "$CLONE_DIR"
+    else
+        # Verify that the local directory exists
+        if [ ! -d "$CLONE_DIR" ]; then
+            print_error "Local cave-images directory not found at $CLONE_DIR"
+            exit 1
+        fi
+        print_success "Using local cave-images submodule"
+    fi
 
     # --- Discover images ---
     pushd "$CLONE_DIR" >/dev/null
@@ -146,7 +160,11 @@ main() {
 
     # --- Cleanup ---
     popd >/dev/null
-    print_success "Done. Repository cached at $CLONE_DIR for future runs."
+    if [ $LOCAL_MODE -eq 0 ]; then
+        print_success "Done. Repository cached at $CLONE_DIR for future runs."
+    else
+        print_success "Done."
+    fi
 }
 
 
