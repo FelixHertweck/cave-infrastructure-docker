@@ -1,0 +1,34 @@
+name: Build Windows Image Builder Container
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "windows-image-builder/**"
+      - ".github/workflows/build-windows-image-builder.yml"
+    tags:
+      - "v*.*"
+      - "v*.*.*"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "windows-image-builder/**"
+      - ".github/workflows/build-windows-image-builder.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  call-docker-workflow:
+    name: Build Windows Image Builder
+    uses: ./.github/workflows/docker.yml
+    with:
+      container_name: cave-windows-image-builder
+      context: "windows-image-builder"
+      dockerfile: "Dockerfile"
+      platforms: "linux/amd64"
+    permissions:
+      contents: read
+      packages: write
+      id-token: write

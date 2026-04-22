@@ -1,0 +1,30 @@
+name: Build CAVE Infrastructure Container
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore: [ "**/*.md" ]
+    tags:
+      - "v*.*"
+      - "v*.*.*"
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore: [ "**/*.md" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  call-docker-workflow:
+    name: Build Main Container
+    uses: ./.github/workflows/docker.yml
+    with:
+      container_name: cave-infrastructure-docker
+      context: "."
+      dockerfile: "Dockerfile"
+      platforms: "linux/amd64,linux/arm64"
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
