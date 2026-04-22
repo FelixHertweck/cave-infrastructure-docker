@@ -1,0 +1,27 @@
+# Generated disk images
+output/
+*.qcow2
+*.img
+
+# OVMF firmware files
+OVMF_*
+
+# swtpm temporary files
+workspace/
+swtpm.sock
+tpm2_*/
+
+# Scratch ISO building
+scratch/
+autounattend.iso
+
+# IDE/Editor temporary files
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Docker build files
+.dockerignore
