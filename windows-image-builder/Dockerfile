@@ -1,12 +1,12 @@
 FROM debian:bookworm
 
-LABEL maintainer="CAVE Infrastructure"
-LABEL description="Docker container for Windows image generation using QEMU and swtpm"
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies for QEMU, UEFI simulation and git
+# Install dependencies for QEMU, UEFI simulation, git and noVNC
 RUN apt-get update && apt-get install -y --no-install-recommends \
     qemu-system-x86 \
     qemu-kvm \
+    qemu-utils \
     qemu-efi \
     ovmf \
     swtpm \
@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
     ca-certificates \
+    novnc \
+    websockify \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Create working directory
@@ -31,5 +34,16 @@ RUN git clone --depth 1 https://gitlab.opencode.de/BSI-Bund/cave/cave-images.git
     # Make bootstrap script executable
     chmod +x /work/bootstrap.sh
 
-# Default to bash shell for interactive use
-CMD ["/bin/bash"]
+# Copy OVMF files for UEFI emulation (must be actual copies, not symlinks)
+RUN cp /usr/share/OVMF/OVMF_CODE_4M.ms.fd /work/ && \
+    cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd /work/
+
+# Copy wrapper script
+COPY wrapper.sh /work/wrapper.sh
+RUN chmod +x /work/wrapper.sh
+
+# Expose noVNC port for web terminal
+EXPOSE 8080
+
+# Run the wrapper script
+CMD ["/work/wrapper.sh"]

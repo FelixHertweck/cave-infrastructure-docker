@@ -1,46 +1,35 @@
 version: '3.8'
 
 services:
-  windows-image-builder:
-    image: ghcr.io/felixhertweck/cave-infrastructure-windows-image-builder:latest
+  cave-windows-builder:
+  
+    # Use pre-built image from GitHub Container Registry
+    # main tag points to the latest commit on the main branch
+    # Recommended to use latest tag or specify a version if available
+    image: ghcr.io/felixhertweck/cave-windows-image-builder:main
+
     container_name: cave-windows-builder
 
-    # Interactive mode - keep running for manual commands
-    stdin_open: true
-    tty: true
+    ports:
+      # noVNC port mapping. Access via http://localhost:8080/vnc.html
+      - "8080:8080"
 
-    # Required for KVM acceleration (QEMU performance)
-    privileged: true
+    environment:
+      # Choose variant: client, server2025, server/server2022
+      - VARIANT=client
+
+    volumes:
+      # Mount ISO images
+      - ./iso-images:/work/iso-images:ro
+
+      # Output directory for the final qcow2 image
+      - ./output:/work/output
+
     devices:
       - /dev/kvm:/dev/kvm
 
-    environment:
-      - SPICE_PORT=5900
-      - SPICE_HOST=127.0.0.1
-      - VM_MEMORY=8G
-      - VM_CPUS=4
-      - LOCAL_TIMEZONE=Europe/Berlin
-      - DISK_SIZE=64G
+    cap_add:
+      - NET_ADMIN
 
-    volumes:
-      # Input: Windows installation ISOs and Virtio drivers
-      - ./iso-input:/work/iso:ro
-      
-      # Output: Generated QCOW2 disk images
-      - ./output:/work/output:rw
-      
-      # Working directory (swtpm sockets, scratch ISO, etc.)
-      - ./workspace:/work/workspace:rw
-
-    working_dir: /work/workspace
-
-    ports:
-      - "5900:5900"  # SPICE VNC
-      - "5901:5901"  # Alternative SPICE VNC (for simultaneous builds)
-
-    healthcheck:
-      test: ["CMD", "test", "-d", "/work/workspace"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    # privileged is often required for QEMU/KVM inside docker
+    privileged: true
