@@ -1,80 +1,60 @@
-# Windows Image Builder for CAVE Infrastructure
+# Windows Image Builder (Dockerized)
 
-Isolated Docker environment for generating Windows images with QEMU and swtpm.
+This directory provides a fully containerized and automated environment for building Windows `.qcow2` images. It wraps the `windows-image-generation` tools from the [cave-images repository](https://gitlab.opencode.de/BSI-Bund/cave/cave-images) into an easy-to-use Docker setup.
 
-The `cave-images` repository is automatically cloned during Docker build.
+By default, the underlying OpenStack/QEMU image generation requires manual interaction via a SPICE client to hit "Press any key to boot from CD or DVD", as well as confirming language settings and bypassing product key prompts depending on the ISO used. This Docker wrapper fully automates these steps using a QEMU monitor socket and simulated keystrokes, making the build process completely unattended.
 
-## Quick Start
+## Prerequisites
 
-### Prepare ISO Files
+1.  **Docker & Docker Compose**: Ensure you have Docker installed.
+2.  **KVM Hardware Virtualization**: The host machine must have native KVM enabled (`/dev/kvm` must exist and be accessible).
 
+## Required ISO Files
 
-### Build Docker Image
+You need to provide the Windows installation media and the VirtIO drivers. For detailed information on where to obtain these, please refer to the [upstream requirements documentation](https://gitlab.opencode.de/oc000142689289/cave-images/-/tree/main/windows-image-generation#requirements). Place them into the `iso-images/` directory:
 
-```bash
-cd windows-image-builder
+*   `install_client.iso` (for Windows 11) or `install_server.iso` (for Windows Server 2025/2022).
+*   `virtio-win.iso` (VirtIO drivers, usually from Fedora).
 
-docker build -t ghcr.io/felixhertweck/cave-infrastructure-windows-image-builder:latest .
-```
+## How to Build an Image
 
-### Generate Windows Image
+1. Ensure your ISO files are correctly placed in the `iso-images/` folder.
+2. If you want to build a different variant than the default `client` (Windows 11), edit the `VARIANT` environment variable in the `docker-compose.yml`. Adjust the ISO mount names accordingly.
 
-```bash
-# Windows 11 Client (create new)
-docker compose run --rm windows-image-builder \
-  ./bootstrap.sh --variant client --new-disk
+   Available variants and required installation media:
 
-# Windows Server 2022 (create new)
-docker compose run --rm windows-image-builder \
-  ./bootstrap.sh --variant server2022 --new-disk
+   | VARIANT | ISO file | Description |
+   | --- | --- | --- |
+   | `client` | `install_client.iso` | Windows 11 installation media |
+   | `server2025` | `install_server.iso` | Windows Server 2025 installation media |
+   | `server` / `server2022` | `install_server2022.iso` | Windows Server 2022 installation media |
 
-# Windows Server 2025 (create new)
-docker compose run --rm windows-image-builder \
-  ./bootstrap.sh --variant server2025 --new-disk
-```
+3. Start the build process:
+   ```bash
+   docker compose up
+   ```
 
-### 4. Interactive Shell (optional)
+The script will automatically start the container, boot QEMU, simulate the necessary key presses to bypass the manual setup screens, and start the unattended Windows installation. Once the installation finishes, the final `.qcow2` image will be copied to your `output/` folder and the container will exit.
 
-```bash
-docker compose run --rm windows-image-builder bash
-# Then in container:
-cd /work/workspace
-./bootstrap.sh --variant client --new-disk
-```
+## How the Automation Works
 
-## Generated Images
+The `wrapper.sh` script does several things to achieve a zero-click installation:
+1.  **noVNC Integration**: It replaces the default SPICE server with VNC and starts a noVNC web server on port `8080`.
+2.  **QEMU Monitor**: It exposes the QEMU monitor via a UNIX socket.
+3.  **Automated Keystrokes**:
+    *   It waits 5 seconds after boot and spams the `Enter` key to catch the "Press any key to boot from CD or DVD" prompt.
+    *   It waits around 60 seconds for the Windows Preinstallation Environment (WinPE) to load, then spams `Enter` to confirm the default language and keyboard layout.
+    *   It sends a `Tab` followed by `Enter` to select the "I don't have a product key" option in the Windows Setup.
+4.  **Completion**: The standard `autounattend.xml` takes over for partitioning, user creation, and post-installation scripts.
 
-After successful build, QCOW2 images are available here:
+## Troubleshooting & Manual Intervention
 
-```
-windows-image-builder/output/
-├── hda_client.qcow2
-└── hda_server.qcow2
-```
+Because the automation relies on fixed delays (e.g., waiting 60 seconds for WinPE to boot), it might fail if your host machine is exceptionally slow or if the Windows ISO behaves differently than expected.
 
-## Configuration
+If the setup seems stuck or the final image is not being generated, you can always intervene manually:
 
-Modify environment variables in `docker compose.yml`:
-
-```yaml
-environment:
-  - SPICE_PORT=5900      # VNC Port
-  - VM_MEMORY=8G         # RAM for Windows VM
-  - VM_CPUS=4            # CPU Cores
-  - DISK_SIZE=64G        # Virtual disk size
-  - LOCAL_TIMEZONE=Europe/Berlin
-```
-
-## Dockerfile - Build Process
-
-The `Dockerfile` performs the following steps:
-
-1. **Base Image:** Debian Bookworm
-2. **Dependencies:** QEMU, swtpm, OVMF, genisoimage, git, ca-certificates
-3. **Repository Clone:** Clones `cave-images` from GitLab
-4. **Extraction:** Copies `windows-image-generation/*` content into `/work`
-5. **Cleanup:** Removes temporary repository clone
-6. **Executable:** Makes `bootstrap.sh` executable
-
-During build, `bootstrap.sh` and `templates/` are automatically fetched from the cave-images repository and included in the image.
-
+1. Open your web browser and go to: **[http://localhost:8080/vnc.html](http://localhost:8080/vnc.html)**
+2. Click **Connect**.
+3. You will see the live screen of the QEMU VM. 
+4. If the automation missed a prompt (e.g., the language selection or the product key screen), you can simply use your mouse and keyboard inside the browser to click "Next", "I don't have a product key", or select the OS edition.
+5. Once you pass the blocking screen, the `autounattend.xml` will pick up the rest of the installation automatically.
