@@ -44,7 +44,7 @@ sleep 5
 
 echo "Sending automated 'Enter' keypresses to QEMU via monitor to kickstart the installation..."
 # Send 'sendkey ret' a few times to ensure we hit the time window
-for i in {1..8}; do
+for i in {1..7}; do
     echo "Pressing Enter (Attempt $i/7)..."
     echo "sendkey ret" | nc -w 1 -U /work/qemu-monitor.sock || true
     sleep 1
@@ -52,35 +52,6 @@ done
 
 echo "Automated keypress sequence complete for CD boot."
 
-echo "Waiting for WinPE to load and reach the 'Select language settings' screen (approx 60-90s)..."
-# WinPE can take a while to spin up
-sleep 60
-
-echo "Sending repeated 'Enter' keystrokes to skip the language setup screen..."
-# We send 'Enter' multiple times over a longer period in case the boot is somewhat slower
-for i in {1..8}; do
-    echo "Pressing Enter to confirm language (Attempt $i/20)..."
-    echo "sendkey ret" | nc -w 1 -U /work/qemu-monitor.sock || true
-    sleep 2
-done
-
-echo "Waiting a few seconds for the 'Product key' screen to stabilize..."
-sleep 10
-
-echo "Sending 'Tab' then 'Enter' repeatedly to select 'I don't have a product key'..."
-
-echo "Sending Tab and Enter keys (Attempt $i/10)..."
-# 1. Tab switches the focus from the text input field to the "I don't have a product key" button
-echo "sendkey tab" | nc -w 1 -U /work/qemu-monitor.sock || true
-sleep 2
-# 2. Enter clicks the button
-echo "sendkey ret" | nc -w 1 -U /work/qemu-monitor.sock || true
-sleep 2
-# 3. An additional Enter as a safety measure (e.g., if an OS selection needs to be confirmed)
-echo "sendkey ret" | nc -w 1 -U /work/qemu-monitor.sock || true
-sleep 5
-
-echo "Automated setup bypass complete! The installation should now be fully unsupervised."
 echo "You can monitor the progress via the noVNC interface at http://localhost:8080/vnc.html"
 
 # Wait for the QEMU process to finish its installation and shut down
