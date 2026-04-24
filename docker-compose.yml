@@ -47,6 +47,9 @@ services:
       # Output directory for generated infrastructure
       - ./out:/cave/out:rw
 
+      # Windows image directory
+      - ./windows-image-builder/output:/cave/windows-images:ro
+
     network_mode: host
 
 volumes:

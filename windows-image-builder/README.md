@@ -16,6 +16,8 @@ You need to provide the Windows installation media and the VirtIO drivers. For d
 *   `install_client.iso` (for Windows 11) or `install_server.iso` (for Windows Server 2025/2022).
 *   `virtio-win.iso` (VirtIO drivers, usually from Fedora).
 
+Hint: You can find links to the windows eval images [here](https://github.com/matthewomccorkle/windows_eval_links)
+
 ## How to Build an Image
 
 1. Ensure your ISO files are correctly placed in the `iso-images/` folder.
@@ -31,21 +33,16 @@ You need to provide the Windows installation media and the VirtIO drivers. For d
 
 3. Start the build process:
    ```bash
+   # Build the default variant (set in docker-compose.yml)
    docker compose up
+
+   # or build a different variant
+   VARIANT=server2025 docker compose up
+   # or
+   VARIANT=server2022 docker compose up
    ```
 
 The script will automatically start the container, boot QEMU, simulate the necessary key presses to bypass the manual setup screens, and start the unattended Windows installation. Once the installation finishes, the final `.qcow2` image will be copied to your `output/` folder and the container will exit.
-
-## How the Automation Works
-
-The `wrapper.sh` script does several things to achieve a zero-click installation:
-1.  **noVNC Integration**: It replaces the default SPICE server with VNC and starts a noVNC web server on port `8080`.
-2.  **QEMU Monitor**: It exposes the QEMU monitor via a UNIX socket.
-3.  **Automated Keystrokes**:
-    *   It waits 5 seconds after boot and spams the `Enter` key to catch the "Press any key to boot from CD or DVD" prompt.
-    *   It waits around 60 seconds for the Windows Preinstallation Environment (WinPE) to load, then spams `Enter` to confirm the default language and keyboard layout.
-    *   It sends a `Tab` followed by `Enter` to select the "I don't have a product key" option in the Windows Setup.
-4.  **Completion**: The standard `autounattend.xml` takes over for partitioning, user creation, and post-installation scripts.
 
 ## Troubleshooting & Manual Intervention
 

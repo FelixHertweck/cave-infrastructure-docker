@@ -20,10 +20,11 @@ main() {
     echo -e "  ${YELLOW}1)${NC} Deploy Infrastructure (deploy-wrapper.sh)"
     echo -e "  ${YELLOW}2)${NC} Build Base Images (build-images.sh)"
     echo -e "  ${YELLOW}3)${NC} Destroy Infrastructure (exterminate.sh)"
+    echo -e "  ${YELLOW}4)${NC} Upload Windows Images (upload-windows-image.sh)"
     echo -e "  ${YELLOW}Q)${NC} Quit"
     echo ""
     
-    read -p "Select an action [1-3, Q]: " choice
+    read -p "Select an action [1-4, Q]: " choice
     echo ""
 
     case "$choice" in
@@ -49,6 +50,9 @@ main() {
                 echo -e "${RED}Error: Lab prefix cannot be empty.${NC}"
                 exit 1
             fi
+            ;;
+        4)
+            exec /cave/upload-windows-image.sh
             ;;
         q|Q)
             echo "Exiting..."
