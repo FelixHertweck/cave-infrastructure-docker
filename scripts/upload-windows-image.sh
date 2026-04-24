@@ -189,7 +189,7 @@ upload_image() {
             IMAGE_NAME="${BASENAME}"
         fi
     elif [[ "$BASENAME" == *"client"* ]] || [[ "$BASENAME" == *"win11"* ]] || [[ "$BASENAME" == *"windows11"* ]]; then
-        IMAGE_NAME="client11_base"
+        IMAGE_NAME="client11"
     else
         IMAGE_NAME="${BASENAME}_$(date +%Y%m%d)"
     fi
