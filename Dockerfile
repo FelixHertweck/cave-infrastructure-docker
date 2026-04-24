@@ -4,7 +4,7 @@ FROM python:3.12.9-slim-bookworm AS builder
 ARG CAVE_REPO=https://gitlab.opencode.de/BSI-Bund/cave/cave-infrastructure.git
 ARG CAVE_REF=3b808721950f77f578b17818e15f3ac0e05600b4
 
-# Use BuildKit cache mount mounts for faster pip installs
+# Install build dependencies only in builder stage
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -12,7 +12,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     git \
     libssl-dev \
     libffi-dev \
-    python3-dev
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -20,16 +21,21 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip setuptools wheel uv
 
-# Clone the repository and checkout specific commit
-RUN git config --global url."https://gitlab.opencode.de/".insteadOf "git@gitlab.opencode.de:" && \
+# Clone repository and checkout specific commit with cache
+RUN --mount=type=cache,target=/root/.cache \
+    git config --global url."https://gitlab.opencode.de/".insteadOf "git@gitlab.opencode.de:" && \
     git clone "${CAVE_REPO}" /tmp/cave && \
     cd /tmp/cave && \
+    git fetch --depth 1 origin "${CAVE_REF}" && \
     git checkout "${CAVE_REF}" && \
-    git submodule update --init --recursive
+    git submodule update --init --recursive --depth 1
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    cd /tmp/cave/backend && pip install -e ".[cli]" && \
-    pip install python-openstackclient
+    cd /tmp/cave/backend && pip install -e ".[cli]" --no-cache-dir && \
+    pip install python-openstackclient --no-cache-dir
+
+# Remove .git directory to save space
+RUN rm -rf /tmp/cave/.git /tmp/cave/*/.git
 
 # ---
 
@@ -37,53 +43,58 @@ FROM ghcr.io/opentofu/opentofu:1.9.0 AS tofu
 
 # ---
 
-FROM python:3.12.9-slim-bookworm
+FROM python:3.12.9-slim-bookworm AS final
 
 LABEL maintainer="CAVE Infrastructure"
 LABEL description="Docker container for CAVE Infrastructure deployment"
 
+# Copy OpenTofu binary
 COPY --from=tofu /usr/local/bin/tofu /usr/local/bin/tofu
 
-# Setup docker-buildx from official binary
+# Copy docker-buildx binary
 COPY --from=docker/buildx-bin /buildx /usr/libexec/docker/cli-plugins/docker-buildx
 
-# Combine all apt-get calls into one layer to reduce layer count
+# Install only essential runtime dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     jq \
     wireguard-tools \
     ca-certificates \
-    ansible \
     git \
     wget \
     unzip \
-    docker.io
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-RUN wget https://releases.hashicorp.com/packer/1.10.2/packer_1.10.2_linux_amd64.zip && \
-    unzip packer_1.10.2_linux_amd64.zip && \
+# Optional: Install ansible only if needed (comment out if not required)
+# RUN apt-get update && apt-get install -y --no-install-recommends ansible && rm -rf /var/lib/apt/lists/*
+
+# Install Packer cleanly
+RUN wget -q https://releases.hashicorp.com/packer/1.10.2/packer_1.10.2_linux_amd64.zip && \
+    unzip -q packer_1.10.2_linux_amd64.zip && \
     mv packer /usr/local/bin/ && \
-    rm packer_1.10.2_linux_amd64.zip
+    rm -f packer_1.10.2_linux_amd64.zip
 
+# Create non-root user
 RUN useradd -m -u 1000 cave
 
+# Copy scripts and application
 COPY --chown=cave:cave scripts/entrypoint.sh /entrypoint.sh
-COPY --chown=cave:cave scripts/main-menu.sh /cave/main-menu.sh
-COPY --chown=cave:cave scripts/deploy-wrapper.sh /cave/deploy-wrapper.sh
-COPY --chown=cave:cave scripts/build-images.sh /cave/build-images.sh
-COPY --chown=cave:cave scripts/post-openstack-init.sh /cave/post-openstack-init.sh
+COPY --chown=cave:cave scripts/*.sh /cave/
 COPY --from=builder --chown=cave:cave /opt/venv /opt/venv
 COPY --from=builder --chown=cave:cave /tmp/cave /cave
 
+# Set permissions
 RUN chmod +x /entrypoint.sh && \
-    chmod +x /cave/main-menu.sh && \
-    chmod +x /cave/deploy-wrapper.sh && \
-    chmod +x /cave/build-images.sh && \
-    chmod +x /cave/post-openstack-init.sh && \
+    chmod +x /cave/*.sh && \
     chmod +x /cave/backend/make_it_so.sh && \
     chmod +x /cave/backend/exterminate.sh && \
     chmod +x /cave/backend/configs/generate_openstack_config.sh
+
+# Cleanup: remove unnecessary files
+RUN find /cave -name "*.pyc" -delete && \
+    find /cave -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 USER cave
 WORKDIR /home/cave
