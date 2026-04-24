@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /work
 
 # Clone cave-images repository and extract windows-image-generation content
-RUN git clone --depth 1 https://gitlab.opencode.de/BSI-Bund/cave/cave-images.git /tmp/cave-images && \
+RUN git clone --depth 1 https://gitlab.opencode.de/oc000142689289/cave-images.git /tmp/cave-images && \
     # Copy windows-image-generation directory
     cp -r /tmp/cave-images/windows-image-generation/* /work/ && \
     # Cleanup temporary clone
