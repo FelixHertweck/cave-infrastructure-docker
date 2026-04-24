@@ -5,6 +5,13 @@ set -e
 VARIANT=${VARIANT:-client}
 export SPICE_PORT=5900
 
+# Default to using -new-disk flag unless explicitly disabled via environment variable
+if [ "${DISABLE_NEW_DISK:-false}" != "true" ]; then
+    NEW_DISK_FLAG="--new-disk"
+else
+    NEW_DISK_FLAG=""
+fi
+
 echo "Starting noVNC on port 8080..."
 # Start websockify for noVNC - QEMU VNC 0 listens on 5900
 websockify --web /usr/share/novnc/ 8080 localhost:5900 &
@@ -24,7 +31,8 @@ ln -s /work/iso-images/*.iso /work/ 2>/dev/null || true
 
 echo "Running bootstrap.sh for variant $VARIANT in the background..."
 # Execute the bootstrap script in background so we can send the automated keystroke
-bash /work/bootstrap.sh --variant $VARIANT &
+# Uses --new-disk by default unless DISABLE_NEW_DISK=true is set
+bash /work/bootstrap.sh --variant $VARIANT $NEW_DISK_FLAG &
 BOOTSTRAP_PID=$!
 
 echo "Waiting for the QEMU monitor socket to initialize..."

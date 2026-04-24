@@ -18,6 +18,9 @@ services:
       # Choose variant: client, server2025, server/server2022
       - VARIANT=client
 
+      # Optionally disable --new-disk flag for bootstrap.sh if needed
+      # - DISABLE_NEW_DISK=true
+
     volumes:
       # Mount ISO images
       - ./iso-images:/work/iso-images:ro
