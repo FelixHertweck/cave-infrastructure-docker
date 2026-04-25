@@ -18,6 +18,10 @@ services:
       # Choose variant: client, server2025, server/server2022
       - VARIANT=${VARIANT:-client}
 
+      # Choose Windows image index for server variants (default: 4 = Datacenter Desktop)
+      # Only used when VARIANT=server2025
+      - IMAGE_INDEX=${IMAGE_INDEX:-4}
+
       # Optionally disable --new-disk flag for bootstrap.sh if needed
       # - DISABLE_NEW_DISK=true
 

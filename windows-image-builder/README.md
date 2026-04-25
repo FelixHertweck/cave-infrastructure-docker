@@ -31,6 +31,29 @@ Hint: You can find links to the windows eval images [here](https://github.com/ma
    | `server2025` | `install_server.iso` | Windows Server 2025 installation media |
    | `server` / `server2022` | `install_server2022.iso` | Windows Server 2022 installation media |
 
+### Windows Server 2025 Image Selection
+
+For `server2025` variant, you can specify which Windows Server edition to install using the `--image-index` flag:
+
+```bash
+# Default: Datacenter Evaluation Desktop Experience (Index 4)
+./bootstrap.sh --variant server2025 --new-disk
+
+# Custom: Standard Evaluation Core (Index 1)
+./bootstrap.sh --variant server2025 --image-index 1 --new-disk
+```
+
+Available Windows Server 2025 indices:
+
+| Index | Edition |
+|-------|---------|
+| 1 | Standard Evaluation (Core) |
+| 2 | Standard Evaluation (Desktop) |
+| 3 | Datacenter Evaluation (Core) |
+| 4 | Datacenter Evaluation (Desktop) *(default)* |
+
+The setup wizard will automatically select the specified image and won't stop at the "Select Image" prompt.
+
 3. Start the build process:
    ```bash
    # Build the default variant (set in docker-compose.yml)
