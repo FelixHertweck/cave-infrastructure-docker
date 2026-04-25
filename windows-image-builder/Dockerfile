@@ -2,6 +2,10 @@ FROM debian:bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Configure cave-images repository and reference (tag, branch, or commit)
+ARG CAVE_REPO=https://gitlab.opencode.de/oc000142689289/cave-images.git
+ARG CAVE_REF=main
+
 # Install dependencies for QEMU, UEFI simulation, git and noVNC
 RUN apt-get update && apt-get install -y --no-install-recommends \
     qemu-system-x86 \
@@ -26,7 +30,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /work
 
 # Clone cave-images repository and extract windows-image-generation content
-RUN git clone --depth 1 https://gitlab.opencode.de/oc000142689289/cave-images.git /tmp/cave-images && \
+RUN git clone "${CAVE_REPO}" /tmp/cave-images && \
+    cd /tmp/cave-images && \
+    git fetch --depth 1 origin "${CAVE_REF}" && \
+    git checkout "${CAVE_REF}" && \
     # Copy windows-image-generation directory
     cp -r /tmp/cave-images/windows-image-generation/* /work/ && \
     # Cleanup temporary clone
