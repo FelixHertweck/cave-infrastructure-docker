@@ -230,9 +230,6 @@ upload_image() {
     # Success message
     echo ""
     print_success "Image '$IMAGE_NAME' successfully uploaded to OpenStack!"
-    echo ""
-    print_info "Image Details:"
-    openstack image show "$IMAGE_NAME"
 }
 
 # Run main function
