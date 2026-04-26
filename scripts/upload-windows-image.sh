@@ -182,7 +182,7 @@ upload_image() {
     # Try to detect variant type and generate appropriate name
     if [[ "$BASENAME" == *"server"* ]]; then
         if [[ "$BASENAME" == *"2025"* ]] || [[ "$BASENAME" == *"2k25"* ]]; then
-            IMAGE_NAME="server2025"
+            IMAGE_NAME="server2k25"
         elif [[ "$BASENAME" == *"2022"* ]] || [[ "$BASENAME" == *"2k22"* ]]; then
             IMAGE_NAME="server2k22"
         else
