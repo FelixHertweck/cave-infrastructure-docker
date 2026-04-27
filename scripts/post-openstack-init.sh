@@ -49,6 +49,71 @@ persist_firewall_rules() {
   netfilter-persistent save
 }
 
+add_windows_flavors() {
+  echo "Adding Windows VM flavors to OpenStack..."
+  
+  # Check if openstack CLI is available
+  if ! command -v openstack >/dev/null 2>&1; then
+    echo "Error: openstack CLI not found. Please ensure it's installed and configured."
+    return 1
+  fi
+  
+  # Check if OpenStack authentication is set up
+  if [ -z "${OS_AUTH_URL:-}" ] || [ -z "${OS_USERNAME:-}" ] || [ -z "${OS_PASSWORD:-}" ]; then
+    echo "Error: OpenStack credentials not set. Please source your openrc file first."
+    return 1
+  fi
+  
+  # Define flavor specifications
+  # windows.small: Minimum requirements for Windows Server
+  # - 4 GB RAM (minimum for Windows Server with GUI)
+  # - 2 VCPUs
+  # - 60 GB root disk (sufficient for Windows Server installation)
+  local SMALL_NAME="windows.small"
+  local SMALL_RAM=4096
+  local SMALL_VCPUS=2
+  local SMALL_DISK=60
+  
+  # windows.large: High-performance Windows VM
+  # - 16 GB RAM
+  # - 8 VCPUs
+  # - 120 GB root disk (for larger workloads)
+  local LARGE_NAME="windows.large"
+  local LARGE_RAM=16384
+  local LARGE_VCPUS=8
+  local LARGE_DISK=120
+  
+  # Create windows.small flavor if it doesn't exist
+  if openstack flavor show "$SMALL_NAME" >/dev/null 2>&1; then
+    echo "Flavor '$SMALL_NAME' already exists, skipping..."
+  else
+    echo "Creating flavor '$SMALL_NAME' (${SMALL_RAM}MB RAM, ${SMALL_VCPUS} VCPUs, ${SMALL_DISK}GB disk)..."
+    openstack flavor create --id auto \
+      --ram "$SMALL_RAM" \
+      --disk "$SMALL_DISK" \
+      --vcpus "$SMALL_VCPUS" \
+      --public \
+      "$SMALL_NAME"
+    echo "Successfully created flavor '$SMALL_NAME'"
+  fi
+  
+  # Create windows.large flavor if it doesn't exist
+  if openstack flavor show "$LARGE_NAME" >/dev/null 2>&1; then
+    echo "Flavor '$LARGE_NAME' already exists, skipping..."
+  else
+    echo "Creating flavor '$LARGE_NAME' (${LARGE_RAM}MB RAM, ${LARGE_VCPUS} VCPUs, ${LARGE_DISK}GB disk)..."
+    openstack flavor create --id auto \
+      --ram "$LARGE_RAM" \
+      --disk "$LARGE_DISK" \
+      --vcpus "$LARGE_VCPUS" \
+      --public \
+      "$LARGE_NAME"
+    echo "Successfully created flavor '$LARGE_NAME'"
+  fi
+  
+  echo "Windows flavor setup complete."
+}
+
 main() {
   check_root
   
@@ -58,6 +123,7 @@ main() {
   
   setup_nat "$iptables"
   persist_firewall_rules
+  add_windows_flavors
   
   echo "Post-OpenStack initialization complete."
 }
