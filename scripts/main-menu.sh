@@ -21,11 +21,10 @@ main() {
     echo -e "  ${YELLOW}2)${NC} Build Base Images (build-images.sh)"
     echo -e "  ${YELLOW}3)${NC} Destroy Infrastructure (exterminate.sh)"
     echo -e "  ${YELLOW}4)${NC} Upload Windows Images (upload-windows-image.sh)"
-    echo -e "  ${YELLOW}5)${NC} Post OpenStack Init (post-openstack-init.sh)"
     echo -e "  ${YELLOW}Q)${NC} Quit"
     echo ""
     
-    read -p "Select an action [1-5, Q]: " choice
+    read -p "Select an action [1-4, Q]: " choice
     echo ""
 
     case "$choice" in
@@ -54,9 +53,6 @@ main() {
             ;;
         4)
             exec /cave/upload-windows-image.sh
-            ;;
-        5)
-            exec /cave/post-openstack-init.sh
             ;;
         q|Q)
             echo "Exiting..."
