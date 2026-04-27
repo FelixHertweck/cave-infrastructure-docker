@@ -203,6 +203,24 @@ check_packer_installed() {
 }
 
 setup_security_group_rules() {
+    print_info "Ensuring required security groups exist..."
+    
+    # Create 'open' security group if it doesn't exist
+    if ! openstack security group show open >/dev/null 2>&1; then
+        print_info "Creating 'open' security group..."
+        openstack security group create open >/dev/null 2>&1 \
+            || print_error "Failed to create 'open' security group"
+    else
+        print_success "Security group 'open' already exists"
+    fi
+    
+    # Ensure 'open' security group allows all traffic (optional, adjust as needed)
+    print_info "Configuring 'open' security group rules..."
+    openstack security group rule create --protocol icmp --ingress open >/dev/null 2>&1 || true
+    openstack security group rule create --protocol tcp --dst-port 1:65535 --ingress open >/dev/null 2>&1 || true
+    openstack security group rule create --protocol udp --dst-port 1:65535 --ingress open >/dev/null 2>&1 || true
+    
+    # Ensure 'default' security group allows SSH and ICMP
     print_info "Ensuring 'default' security group allows SSH and ICMP..."
     openstack security group rule create --protocol icmp --ingress default >/dev/null 2>&1 || true
     openstack security group rule create --protocol tcp --dst-port 22:22 --ingress default >/dev/null 2>&1 || true
