@@ -225,8 +225,14 @@ upload_image() {
         --file "$IMAGE_PATH" \
         --disk-format qcow2 \
         --container-format bare \
+        --public \
+        --property os_type=windows \
+        --property hw_machine_type=q35 \
+        --property hw_firmware_type=uefi \
+        --property hw_disk_bus=virtio \
+        --property hw_vif_model=virtio \
         "$IMAGE_NAME"
-    
+
     # Success message
     echo ""
     print_success "Image '$IMAGE_NAME' successfully uploaded to OpenStack!"
