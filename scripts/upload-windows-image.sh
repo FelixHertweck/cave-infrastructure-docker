@@ -225,6 +225,7 @@ upload_image() {
         --file "$IMAGE_PATH" \
         --disk-format qcow2 \
         --container-format bare \
+        --public \
         "$IMAGE_NAME"
     
     # Success message
