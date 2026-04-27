@@ -52,64 +52,72 @@ persist_firewall_rules() {
 add_windows_flavors() {
   echo "Adding Windows VM flavors to OpenStack..."
   
-  # Check if openstack CLI is available
-  if ! command -v openstack >/dev/null 2>&1; then
-    echo "Error: openstack CLI not found. Please ensure it's installed and configured."
+  # Check if docker compose is available
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Error: docker CLI not found."
     return 1
   fi
   
-  # Check if OpenStack authentication is set up
-  if [ -z "${OS_AUTH_URL:-}" ] || [ -z "${OS_USERNAME:-}" ] || [ -z "${OS_PASSWORD:-}" ]; then
-    echo "Error: OpenStack credentials not set. Please source your openrc file first."
+  # Check if we're in the right directory (where docker-compose.yml exists)
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local project_dir="$(dirname "$script_dir")"
+  
+  if [ ! -f "$project_dir/docker-compose.yml" ]; then
+    echo "Error: docker-compose.yml not found in $project_dir"
     return 1
   fi
   
-  # Define flavor specifications
-  # windows.small: Minimum requirements for Windows Server
-  # - 4 GB RAM (minimum for Windows Server with GUI)
-  # - 2 VCPUs
-  # - 60 GB root disk (sufficient for Windows Server installation)
-  local SMALL_NAME="windows.small"
-  local SMALL_RAM=4096
-  local SMALL_VCPUS=2
-  local SMALL_DISK=60
+  cd "$project_dir"
   
-  # windows.large: High-performance Windows VM
-  # - 16 GB RAM
-  # - 8 VCPUs
-  # - 120 GB root disk (for larger workloads)
-  local LARGE_NAME="windows.large"
-  local LARGE_RAM=16384
-  local LARGE_VCPUS=8
-  local LARGE_DISK=120
-  
-  # Create windows.small flavor if it doesn't exist
-  if openstack flavor show "$SMALL_NAME" >/dev/null 2>&1; then
-    echo "Flavor '$SMALL_NAME' already exists, skipping..."
-  else
-    echo "Creating flavor '$SMALL_NAME' (${SMALL_RAM}MB RAM, ${SMALL_VCPUS} VCPUs, ${SMALL_DISK}GB disk)..."
-    openstack flavor create --id auto \
-      --ram "$SMALL_RAM" \
-      --disk "$SMALL_DISK" \
-      --vcpus "$SMALL_VCPUS" \
-      --public \
-      "$SMALL_NAME"
-    echo "Successfully created flavor '$SMALL_NAME'"
-  fi
-  
-  # Create windows.large flavor if it doesn't exist
-  if openstack flavor show "$LARGE_NAME" >/dev/null 2>&1; then
-    echo "Flavor '$LARGE_NAME' already exists, skipping..."
-  else
-    echo "Creating flavor '$LARGE_NAME' (${LARGE_RAM}MB RAM, ${LARGE_VCPUS} VCPUs, ${LARGE_DISK}GB disk)..."
-    openstack flavor create --id auto \
-      --ram "$LARGE_RAM" \
-      --disk "$LARGE_DISK" \
-      --vcpus "$LARGE_VCPUS" \
-      --public \
-      "$LARGE_NAME"
-    echo "Successfully created flavor '$LARGE_NAME'"
-  fi
+  # Execute all flavor creation commands in a single container run
+  docker compose run --rm cave bash -c '
+    set -e
+    
+    # Flavor specifications
+    SMALL_NAME="windows.small"
+    SMALL_RAM=4096
+    SMALL_VCPUS=2
+    SMALL_DISK=60
+    
+    LARGE_NAME="windows.large"
+    LARGE_RAM=16384
+    LARGE_VCPUS=8
+    LARGE_DISK=120
+    
+    echo "Checking existing flavors..."
+    
+    # Create windows.small flavor if it does not exist
+    if openstack flavor show "$SMALL_NAME" >/dev/null 2>&1; then
+      echo "Flavor '\''$SMALL_NAME'\'' already exists, skipping..."
+    else
+      echo "Creating flavor '\''$SMALL_NAME'\'' (${SMALL_RAM}MB RAM, ${SMALL_VCPUS} VCPUs, ${SMALL_DISK}GB disk)..."
+      openstack flavor create --id auto \
+        --ram "$SMALL_RAM" \
+        --disk "$SMALL_DISK" \
+        --vcpus "$SMALL_VCPUS" \
+        --public \
+        "$SMALL_NAME"
+      echo "Successfully created flavor '\''$SMALL_NAME'\''"
+    fi
+    
+    # Create windows.large flavor if it does not exist
+    if openstack flavor show "$LARGE_NAME" >/dev/null 2>&1; then
+      echo "Flavor '\''$LARGE_NAME'\'' already exists, skipping..."
+    else
+      echo "Creating flavor '\''$LARGE_NAME'\'' (${LARGE_RAM}MB RAM, ${LARGE_VCPUS} VCPUs, ${LARGE_DISK}GB disk)..."
+      openstack flavor create --id auto \
+        --ram "$LARGE_RAM" \
+        --disk "$LARGE_DISK" \
+        --vcpus "$LARGE_VCPUS" \
+        --public \
+        "$LARGE_NAME"
+      echo "Successfully created flavor '\''$LARGE_NAME'\''"
+    fi
+    
+    echo ""
+    echo "Available Windows flavors:"
+    openstack flavor list --public | grep -E "windows\\.(small|large)" || echo "No Windows flavors found"
+  '
   
   echo "Windows flavor setup complete."
 }
