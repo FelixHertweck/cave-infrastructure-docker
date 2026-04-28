@@ -228,10 +228,9 @@ upload_image() {
         --property os_type=windows \
         --property hw_machine_type=q35 \
         --property hw_firmware_type=uefi \
-        --property hw_disk_bus=sata \
-        --property hw_vif_model=e1000 \
+        --property hw_disk_bus=virtio \
+        --property hw_vif_model=virtio \
         --property os_secure_boot=required \
-        --property hw_firmware_loader=/usr/share/OVMF/OVMF_CODE_4M.ms.fd \
         "$IMAGE_NAME"
 
     # Success message
