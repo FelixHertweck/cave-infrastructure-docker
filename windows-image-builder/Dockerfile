@@ -42,8 +42,8 @@ RUN git clone "${CAVE_REPO}" /tmp/cave-images && \
     chmod +x /work/bootstrap.sh
 
 # Copy OVMF files for UEFI emulation (must be actual copies, not symlinks)
-RUN cp /usr/share/OVMF/OVMF_CODE.ms.fd /work/OVMF_CODE_4M.ms.fd && \
-    cp /usr/share/OVMF/OVMF_VARS.ms.fd /work/OVMF_VARS_4M.ms.fd
+RUN cp /usr/share/OVMF/OVMF_CODE_4M.ms.fd /work/ && \
+    cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd /work/
 
 # Copy wrapper script
 COPY wrapper.sh /work/wrapper.sh
