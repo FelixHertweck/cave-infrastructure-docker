@@ -230,7 +230,7 @@ upload_image() {
         --property hw_firmware_type=uefi \
         --property hw_disk_bus=virtio \
         --property hw_vif_model=virtio \
-        --property os_secure_boot=required \
+        --property os_secure_boot=disabled \
         "$IMAGE_NAME"
 
     # Success message
