@@ -5,6 +5,9 @@ NAT_SUBNET="${OS_NAT_SUBNET:-10.20.20.0/24}"
 EXTERNAL_IF="${OS_EXTERNAL_IF:-enp1s0}"
 BRIDGE_IF="${OS_BRIDGE_IF:-br-ex}"
 
+MICROSTACK_OVMF_DIR="/snap/microstack/245/usr/share/OVMF"
+HOST_OVMF_DIR="/var/snap/microstack/common/ovmf"
+
 check_root() {
   if [ "$EUID" -ne 0 ]; then
     echo "Error: This script must be run as root."
@@ -47,6 +50,55 @@ persist_firewall_rules() {
   fi
   
   netfilter-persistent save
+}
+
+# MicroStack bundles 2M OVMF firmware, but Windows images are built with 4M OVMF
+# (OVMF_CODE_4M.ms.fd + OVMF_VARS_4M.ms.fd). Using mismatched firmware sizes causes
+# a silent black screen on boot. Since the snap is read-only, we bind-mount the
+# host's 4M OVMF files over the snap's 2M files and persist this via a systemd unit.
+setup_ovmf() {
+  echo "Setting up 4M OVMF firmware for MicroStack..."
+
+  # Verify host has 4M OVMF files
+  if [ ! -f /usr/share/OVMF/OVMF_CODE_4M.secboot.fd ]; then
+    echo "Error: /usr/share/OVMF/OVMF_CODE_4M.secboot.fd not found. Install ovmf package."
+    exit 1
+  fi
+
+  mkdir -p "$HOST_OVMF_DIR"
+  cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd "$HOST_OVMF_DIR/OVMF_CODE.secboot.fd"
+  cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd      "$HOST_OVMF_DIR/OVMF_VARS.ms.fd"
+  cp /usr/share/OVMF/OVMF_VARS_4M.fd         "$HOST_OVMF_DIR/OVMF_VARS.fd"
+
+  mount --bind "$HOST_OVMF_DIR/OVMF_CODE.secboot.fd" "$MICROSTACK_OVMF_DIR/OVMF_CODE.secboot.fd"
+  mount --bind "$HOST_OVMF_DIR/OVMF_VARS.ms.fd"      "$MICROSTACK_OVMF_DIR/OVMF_VARS.ms.fd"
+  mount --bind "$HOST_OVMF_DIR/OVMF_VARS.fd"         "$MICROSTACK_OVMF_DIR/OVMF_VARS.fd"
+
+  echo "Persisting OVMF bind-mounts via systemd..."
+  cat > /etc/systemd/system/microstack-ovmf-fix.service << EOF
+[Unit]
+Description=Bind-mount 4M OVMF firmware over MicroStack snap (2M)
+After=snapd.service
+Before=snap.microstack.nova-compute.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mount --bind ${HOST_OVMF_DIR}/OVMF_CODE.secboot.fd ${MICROSTACK_OVMF_DIR}/OVMF_CODE.secboot.fd
+ExecStart=/bin/mount --bind ${HOST_OVMF_DIR}/OVMF_VARS.ms.fd      ${MICROSTACK_OVMF_DIR}/OVMF_VARS.ms.fd
+ExecStart=/bin/mount --bind ${HOST_OVMF_DIR}/OVMF_VARS.fd         ${MICROSTACK_OVMF_DIR}/OVMF_VARS.fd
+ExecStop=/bin/umount ${MICROSTACK_OVMF_DIR}/OVMF_CODE.secboot.fd
+ExecStop=/bin/umount ${MICROSTACK_OVMF_DIR}/OVMF_VARS.ms.fd
+ExecStop=/bin/umount ${MICROSTACK_OVMF_DIR}/OVMF_VARS.fd
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable microstack-ovmf-fix.service
+
+  echo "OVMF firmware setup complete."
 }
 
 add_windows_flavors() {
@@ -116,7 +168,7 @@ add_windows_flavors() {
     
     echo ""
     echo "Available Windows flavors:"
-    openstack flavor list --public | grep -E "windows\\.(small|large)" || echo "No Windows flavors found"
+    openstack flavor list --public | grep -E "windows\.(small|large)" || echo "No Windows flavors found"
   '
   
   echo "Windows flavor setup complete."
@@ -131,6 +183,7 @@ main() {
   
   setup_nat "$iptables"
   persist_firewall_rules
+  setup_ovmf
   add_windows_flavors
   
   echo "Post-OpenStack initialization complete."
