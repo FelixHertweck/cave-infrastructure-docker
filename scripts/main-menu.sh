@@ -18,13 +18,14 @@ main() {
     
     echo -e "What would you like to do?"
     echo -e "  ${YELLOW}1)${NC} Deploy Infrastructure (deploy-wrapper.sh)"
-    echo -e "  ${YELLOW}2)${NC} Build Base Images (build-images.sh)"
-    echo -e "  ${YELLOW}3)${NC} Destroy Infrastructure (exterminate.sh)"
-    echo -e "  ${YELLOW}4)${NC} Upload Windows Images (upload-windows-image.sh)"
+    echo -e "  ${YELLOW}2)${NC} Pre-Build Setup (pre-build-images.sh)"
+    echo -e "  ${YELLOW}3)${NC} Build Base Images (build-images.sh)"
+    echo -e "  ${YELLOW}4)${NC} Destroy Infrastructure (exterminate.sh)"
+    echo -e "  ${YELLOW}5)${NC} Upload Windows Images (upload-windows-image.sh)"
     echo -e "  ${YELLOW}Q)${NC} Quit"
     echo ""
     
-    read -p "Select an action [1-4, Q]: " choice
+    read -p "Select an action [1-5, Q]: " choice
     echo ""
 
     case "$choice" in
@@ -32,9 +33,12 @@ main() {
             exec /cave/deploy-wrapper.sh
             ;;
         2)
-            exec /cave/build-images.sh
+            exec /cave/pre-build-images.sh
             ;;
         3)
+            exec /cave/build-images.sh
+            ;;
+        4)
             # Find possible lab prefixes if possible
             default_prefix="${LAB_PREFIX:-}"
             if [ -n "$default_prefix" ]; then
@@ -51,7 +55,7 @@ main() {
                 exit 1
             fi
             ;;
-        4)
+        5)
             exec /cave/upload-windows-image.sh
             ;;
         q|Q)

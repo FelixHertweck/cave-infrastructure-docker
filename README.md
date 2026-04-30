@@ -62,7 +62,18 @@ If you have generated Windows base images (from the Windows Image Builder), you 
 docker compose run --rm cave /cave/upload-windows-image.sh
 ```
 
-### 7. Build CAVE Base Images
+### 7. Pre-Build Setup
+Before building CAVE base images, you need to set up the OpenStack environment and download required cloud images. This step:
+- Creates and configures required security groups
+- Downloads the Kali Linux cloud image
+- Extracts and uploads it to OpenStack
+
+Run the pre-build setup script:
+```bash
+docker compose run --rm cave /cave/pre-build-images.sh
+```
+
+### 8. Build CAVE Base Images
 Before deploying, you must build the required base images and upload them to OpenStack using Packer. By default, this uses the official [CAVE Images repository](https://gitlab.opencode.de/BSI-Bund/cave/cave-images).
 
 Start the interactive image builder:
@@ -105,7 +116,7 @@ If the flavor names differ from the standard repository, add the correct mapping
 
 Follow the interactive prompts to build the necessary images. Wait until the builds finish successfully.
 
-### 8. Deploy Infrastructure using the Wrapper
+### 9. Deploy Infrastructure using the Wrapper
 Now you can deploy the CAVE infrastructure using the interactive deployment wrapper.
 
 Start the wrapper interactively:
