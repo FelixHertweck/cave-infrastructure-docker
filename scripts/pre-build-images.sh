@@ -116,9 +116,7 @@ download_images_to_openstack() {
 
     # ── Download ─────────────────────────────
     print_info "Downloading $ARCHIVE_NAME ..."
-    if ! curl --fail --location --progress-bar \
-         --output "$WORK_DIR/$ARCHIVE_NAME" \
-         "$KALI_URL"; then
+    if ! wget --progress=bar:force:noscroll -O "$WORK_DIR/$ARCHIVE_NAME" "$KALI_URL"; then
         print_error "Download failed: $KALI_URL"
         rm -rf "$WORK_DIR"
         exit 1
