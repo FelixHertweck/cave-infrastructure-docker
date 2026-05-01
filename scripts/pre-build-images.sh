@@ -128,9 +128,9 @@ download_images_to_openstack() {
     tar -xf "$WORK_DIR/$ARCHIVE_NAME" -C "$WORK_DIR"
     print_success "Extraction complete"
 
-    # Find the disk image (prefer qcow2, fall back to raw .img)
+    # Find the disk image (prefer qcow2, fall back to raw .img or .raw)
     local IMAGE_FILE
-    IMAGE_FILE=$(find "$WORK_DIR" -type f \( -name "*.qcow2" -o -name "*.img" \) | head -n 1)
+    IMAGE_FILE=$(find "$WORK_DIR" -type f \( -name "*.qcow2" -o -name "*.img" -o -name "*.raw" \) | head -n 1)
 
     if [ -z "$IMAGE_FILE" ]; then
         print_error "No disk image (.qcow2 or .img) found after extraction."
@@ -160,6 +160,7 @@ upload_image() {
     case "$EXTENSION" in
         qcow2) DISK_FORMAT="qcow2" ;;
         img)   DISK_FORMAT="raw"   ;;
+        raw)   DISK_FORMAT="raw"   ;;
         *)     DISK_FORMAT="raw"   ;;
     esac
 
