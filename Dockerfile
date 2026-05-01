@@ -63,6 +63,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ca-certificates \
     git \
     wget \
+    xz-utils \
     unzip \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
