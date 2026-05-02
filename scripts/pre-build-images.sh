@@ -107,6 +107,7 @@ setup_security_group_rules() {
 
 download_images_to_openstack() {
     local KALI_URL="https://kali.download/cloud-images/kali-2026.1/kali-linux-2026.1-cloud-genericcloud-amd64.tar.xz"
+    local IMAGE_NAME="kali-linux-2026.1"
     local ARCHIVE_NAME
     ARCHIVE_NAME=$(basename "$KALI_URL")
     local WORK_DIR
@@ -141,7 +142,7 @@ download_images_to_openstack() {
     print_success "Found image file: $(basename "$IMAGE_FILE")"
 
     # ── Upload ───────────────────────────────
-    upload_image "$IMAGE_FILE"
+    upload_image "$IMAGE_FILE" "$IMAGE_NAME"
 
     # ── Cleanup ──────────────────────────────
     print_info "Cleaning up temporary files..."
@@ -151,6 +152,7 @@ download_images_to_openstack() {
 
 upload_image() {
     local IMAGE_PATH="$1"
+    local IMAGE_NAME="$2"
     local FILENAME
     FILENAME=$(basename "$IMAGE_PATH")
     local EXTENSION="${FILENAME##*.}"
@@ -163,11 +165,6 @@ upload_image() {
         raw)   DISK_FORMAT="raw"   ;;
         *)     DISK_FORMAT="raw"   ;;
     esac
-
-    # Derive image name from filename (strip extension)
-    local BASENAME="${FILENAME%.*}"
-    # For double extensions like .tar.xz already stripped; handle .qcow2 / .img
-    local IMAGE_NAME="$BASENAME"
 
     print_info "Image name   : $IMAGE_NAME"
     print_info "Disk format  : $DISK_FORMAT"
