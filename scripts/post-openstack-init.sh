@@ -125,50 +125,89 @@ add_windows_flavors() {
   docker compose run --rm cave bash -c '
     set -e
     
-    # Flavor specifications
-    SMALL_NAME="windows.small"
-    SMALL_RAM=4096
-    SMALL_VCPUS=2
-    SMALL_DISK=60
+    # Windows flavor specifications
+    WIN_SMALL_NAME="windows.small"
+    WIN_SMALL_RAM=4096
+    WIN_SMALL_VCPUS=2
+    WIN_SMALL_DISK=60
     
-    LARGE_NAME="windows.large"
-    LARGE_RAM=16384
-    LARGE_VCPUS=8
-    LARGE_DISK=120
+    WIN_LARGE_NAME="windows.large"
+    WIN_LARGE_RAM=16384
+    WIN_LARGE_VCPUS=8
+    WIN_LARGE_DISK=120
+    
+    # Linux flavor specifications
+    LINUX_MEDIUM_NAME="linux.medium.50g"
+    LINUX_MEDIUM_RAM=4096
+    LINUX_MEDIUM_VCPUS=2
+    LINUX_MEDIUM_DISK=50
+    
+    LINUX_LARGE_NAME="linux.large.50g"
+    LINUX_LARGE_RAM=8192
+    LINUX_LARGE_VCPUS=4
+    LINUX_LARGE_DISK=50
     
     echo "Checking existing flavors..."
     
     # Create windows.small flavor if it does not exist
-    if openstack flavor show "$SMALL_NAME" >/dev/null 2>&1; then
-      echo "Flavor '\''$SMALL_NAME'\'' already exists, skipping..."
+    if openstack flavor show "$WIN_SMALL_NAME" >/dev/null 2>&1; then
+      echo "Flavor '\''$WIN_SMALL_NAME'\'' already exists, skipping..."
     else
-      echo "Creating flavor '\''$SMALL_NAME'\'' (${SMALL_RAM}MB RAM, ${SMALL_VCPUS} VCPUs, ${SMALL_DISK}GB disk)..."
+      echo "Creating flavor '\''$WIN_SMALL_NAME'\'' (${WIN_SMALL_RAM}MB RAM, ${WIN_SMALL_VCPUS} VCPUs, ${WIN_SMALL_DISK}GB disk)..."
       openstack flavor create --id auto \
-        --ram "$SMALL_RAM" \
-        --disk "$SMALL_DISK" \
-        --vcpus "$SMALL_VCPUS" \
+        --ram "$WIN_SMALL_RAM" \
+        --disk "$WIN_SMALL_DISK" \
+        --vcpus "$WIN_SMALL_VCPUS" \
         --public \
-        "$SMALL_NAME"
-      echo "Successfully created flavor '\''$SMALL_NAME'\''"
+        "$WIN_SMALL_NAME"
+      echo "Successfully created flavor '\''$WIN_SMALL_NAME'\''"
     fi
     
     # Create windows.large flavor if it does not exist
-    if openstack flavor show "$LARGE_NAME" >/dev/null 2>&1; then
-      echo "Flavor '\''$LARGE_NAME'\'' already exists, skipping..."
+    if openstack flavor show "$WIN_LARGE_NAME" >/dev/null 2>&1; then
+      echo "Flavor '\''$WIN_LARGE_NAME'\'' already exists, skipping..."
     else
-      echo "Creating flavor '\''$LARGE_NAME'\'' (${LARGE_RAM}MB RAM, ${LARGE_VCPUS} VCPUs, ${LARGE_DISK}GB disk)..."
+      echo "Creating flavor '\''$WIN_LARGE_NAME'\'' (${WIN_LARGE_RAM}MB RAM, ${WIN_LARGE_VCPUS} VCPUs, ${WIN_LARGE_DISK}GB disk)..."
       openstack flavor create --id auto \
-        --ram "$LARGE_RAM" \
-        --disk "$LARGE_DISK" \
-        --vcpus "$LARGE_VCPUS" \
+        --ram "$WIN_LARGE_RAM" \
+        --disk "$WIN_LARGE_DISK" \
+        --vcpus "$WIN_LARGE_VCPUS" \
         --public \
-        "$LARGE_NAME"
-      echo "Successfully created flavor '\''$LARGE_NAME'\''"
+        "$WIN_LARGE_NAME"
+      echo "Successfully created flavor '\''$WIN_LARGE_NAME'\''"
+    fi
+    
+    # Create linux.medium flavor if it does not exist
+    if openstack flavor show "$LINUX_MEDIUM_NAME" >/dev/null 2>&1; then
+      echo "Flavor '\''$LINUX_MEDIUM_NAME'\'' already exists, skipping..."
+    else
+      echo "Creating flavor '\''$LINUX_MEDIUM_NAME'\'' (${LINUX_MEDIUM_RAM}MB RAM, ${LINUX_MEDIUM_VCPUS} VCPUs, ${LINUX_MEDIUM_DISK}GB disk)..."
+      openstack flavor create --id auto \
+        --ram "$LINUX_MEDIUM_RAM" \
+        --disk "$LINUX_MEDIUM_DISK" \
+        --vcpus "$LINUX_MEDIUM_VCPUS" \
+        --public \
+        "$LINUX_MEDIUM_NAME"
+      echo "Successfully created flavor '\''$LINUX_MEDIUM_NAME'\''"
+    fi
+    
+    # Create linux.large flavor if it does not exist
+    if openstack flavor show "$LINUX_LARGE_NAME" >/dev/null 2>&1; then
+      echo "Flavor '\''$LINUX_LARGE_NAME'\'' already exists, skipping..."
+    else
+      echo "Creating flavor '\''$LINUX_LARGE_NAME'\'' (${LINUX_LARGE_RAM}MB RAM, ${LINUX_LARGE_VCPUS} VCPUs, ${LINUX_LARGE_DISK}GB disk)..."
+      openstack flavor create --id auto \
+        --ram "$LINUX_LARGE_RAM" \
+        --disk "$LINUX_LARGE_DISK" \
+        --vcpus "$LINUX_LARGE_VCPUS" \
+        --public \
+        "$LINUX_LARGE_NAME"
+      echo "Successfully created flavor '\''$LINUX_LARGE_NAME'\''"
     fi
     
     echo ""
-    echo "Available Windows flavors:"
-    openstack flavor list --public | grep -E "windows\.(small|large)" || echo "No Windows flavors found"
+    echo "Available VM flavors:"
+    openstack flavor list --public | grep -E "(windows|linux)\." || echo "No custom flavors found"
   '
   
   echo "Windows flavor setup complete."
