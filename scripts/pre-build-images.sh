@@ -129,17 +129,32 @@ download_images_to_openstack() {
     tar -xf "$WORK_DIR/$ARCHIVE_NAME" -C "$WORK_DIR"
     print_success "Extraction complete"
 
-    # Find the disk image (prefer qcow2, fall back to raw .img or .raw)
-    local IMAGE_FILE
-    IMAGE_FILE=$(find "$WORK_DIR" -type f \( -name "*.qcow2" -o -name "*.img" -o -name "*.raw" \) | head -n 1)
+    # ── Find extracted raw image ──────────────
+    local RAW_IMAGE
+    RAW_IMAGE=$(find "$WORK_DIR" -type f \( -name "*.qcow2" -o -name "*.img" -o -name "*.raw" \) | head -n 1)
 
-    if [ -z "$IMAGE_FILE" ]; then
-        print_error "No disk image (.qcow2 or .img) found after extraction."
+    if [ -z "$RAW_IMAGE" ]; then
+        print_error "No disk image (.qcow2, .img, or .raw) found after extraction."
         rm -rf "$WORK_DIR"
         exit 1
     fi
 
-    print_success "Found image file: $(basename "$IMAGE_FILE")"
+    print_success "Found image file: $(basename "$RAW_IMAGE")"
+
+    # ── Convert to QCOW2 (if raw) ────────────
+    local IMAGE_FILE="$RAW_IMAGE"
+    if [[ "$RAW_IMAGE" == *.raw ]]; then
+        local QCOW2_IMAGE="${RAW_IMAGE%.raw}.qcow2"
+        print_info "Converting RAW image to compressed QCOW2..."
+        if ! qemu-img convert -f raw -O qcow2 -c "$RAW_IMAGE" "$QCOW2_IMAGE"; then
+            print_error "Failed to convert RAW image to QCOW2"
+            rm -rf "$WORK_DIR"
+            exit 1
+        fi
+        print_success "Conversion complete"
+        rm -f "$RAW_IMAGE"
+        IMAGE_FILE="$QCOW2_IMAGE"
+    fi
 
     # ── Upload ───────────────────────────────
     upload_image "$IMAGE_FILE" "$IMAGE_NAME"

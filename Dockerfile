@@ -64,6 +64,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     git \
     wget \
     xz-utils \
+    qemu-utils \
     unzip \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
