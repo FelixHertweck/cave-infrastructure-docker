@@ -1,8 +1,12 @@
 # Multi-stage build for CAVE Infrastructure
 FROM python:3.12.9-slim-bookworm AS builder
 
-ARG CAVE_REPO=https://gitlab.opencode.de/BSI-Bund/cave/cave-infrastructure.git
-ARG CAVE_REF=3b808721950f77f578b17818e15f3ac0e05600b4
+# Original cave repository
+#ARG CAVE_REPO=https://gitlab.opencode.de/BSI-Bund/cave/cave-infrastructure.git
+
+# Forked repository
+ARG CAVE_REPO=https://gitlab.opencode.de/oc000142689289/cave-infrastructure.git
+ARG CAVE_REF=584b62eb185da245abf68227704bf487452e4974
 
 # Install build dependencies only in builder stage
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
