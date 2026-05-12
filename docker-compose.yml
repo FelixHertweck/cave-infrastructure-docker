@@ -42,10 +42,10 @@ services:
       - ./ssh-keys:/home/cave/.ssh:ro
 
       # Configuration files
-      - ./backend/configs:/cave/backend/configs:ro
+      - ./backend/configs:/cave/backend/configs:rw
 
       # Output directory for generated infrastructure
-      - ./out:/cave/out:rw
+      - ./out:/cave/backend/out:rw
 
       # Windows image directory
       - ./windows-image-builder/output:/cave/windows-images:ro

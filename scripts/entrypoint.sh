@@ -19,12 +19,33 @@ print_success() {
     echo -e "${GREEN}✓ $1${NC}" >&2
 }
 
+# Fix permissions if running as root
+if [ "$(id -u)" = '0' ]; then
+    print_info "Running as root. Fixing permissions for /cave/backend/out and /cave/backend/configs..."
+    
+    # Ensure these directories exist (they should be mounted or copied)
+    mkdir -p /cave/backend/out /cave/backend/configs
+    
+    # Recursively change ownership to the 'cave' user (UID 1000)
+    chown -R cave:cave /cave/backend/out /cave/backend/configs
+    
+    print_success "Permissions fixed."
+fi
+
 # Source OpenStack credentials if available
 # Use 'set -a' to export all variables in the sourced file
 if [ -f /.openrc ]; then
     print_info "Sourcing OpenStack credentials from /.openrc..."
     set -a
     source /.openrc
+    set +a
+fi
+
+# Load environment variables from .env (if available)
+if [ -f .env ]; then
+    print_info "Loading environment variables from .env..."
+    set -a
+    source .env
     set +a
 fi
 
@@ -40,7 +61,10 @@ fi
 print_success "OpenStack credentials validated. Ready to proceed."
 
 # Execute the command passed to the container
-"$@"
-EXIT_CODE=$?
-
-exit $EXIT_CODE
+if [ "$(id -u)" = '0' ]; then
+    # Use gosu to drop to the 'cave' user
+    exec gosu cave "$@"
+else
+    # Already running as non-root user
+    exec "$@"
+fi

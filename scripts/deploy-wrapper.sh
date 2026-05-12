@@ -61,6 +61,46 @@ validate_ssh_key() {
     echo "$ssh_key_path"
 }
 
+setup_openstack_toml() {
+    local toml_path="/cave/backend/configs/openstack.toml"
+    
+    if [ -f "$toml_path" ]; then
+        print_success "OpenStack config found: openstack.toml"
+        return 0
+    fi
+    
+    print_info "OpenStack config not found. Generating automatically..."
+    
+    # 1. Find Public Network (following build-images.sh logic)
+    local public_net_id
+    public_net_id=$(openstack network list --external -f value -c ID | head -n 1)
+    
+    if [ -z "$public_net_id" ]; then
+        print_error "Could not find an external (public) network in OpenStack!"
+        exit 1
+    fi
+    print_success "Found public network: $public_net_id"
+    
+    # 2. Create/Find Management Subnet
+    local mgmt_net_name="cave-mgmt-net"
+    local mgmt_subnet_name="cave-mgmt-subnet"
+    local mgmt_net_id
+    local mgmt_subnet_id
+    
+    print_info "Ensuring management network '$mgmt_net_name' exists..."
+    mgmt_net_id=$(openstack network show "$mgmt_net_name" -f value -c id 2>/dev/null || openstack network create "$mgmt_net_name" -f value -c id)
+    
+    print_info "Ensuring management subnet '$mgmt_subnet_name' exists..."
+    mgmt_subnet_id=$(openstack subnet show "$mgmt_subnet_name" -f value -c id 2>/dev/null || openstack subnet create --network "$mgmt_net_id" --subnet-range "10.99.0.0/24" "$mgmt_subnet_name" -f value -c id)
+    
+    # 3. Write TOML
+    cat << EOF > "$toml_path"
+public_network_id = "$public_net_id"
+subnet_id = "$mgmt_subnet_id"
+EOF
+    print_success "Generated $toml_path"
+}
+
 show_usage() {
     cat << EOF >&2
 ${BLUE}Usage:${NC}
@@ -156,6 +196,9 @@ main() {
     validate_credentials
     local ssh_key_path=$(validate_ssh_key)
     
+    # Setup OpenStack TOML and Network
+    setup_openstack_toml
+    
     # Get config name (interactive if not provided)
     if [ -z "$config_name" ]; then
         print_info "Available configurations:"
@@ -184,11 +227,18 @@ main() {
     fi
     
     # Validate config file
-    local config_file="/cave/backend/configs/${config_name}.json5"
-    if ! validate_file "$config_file"; then
+    local config_file_orig="/cave/backend/configs/${config_name}.json5"
+    if ! validate_file "$config_file_orig"; then
         exit 1
     fi
     print_success "Config file found: $config_name.json5"
+    
+    # Copy config to a writable location to allow patching (configs dir might be problematic)
+    local config_work_dir="/tmp/cave_configs"
+    mkdir -p "$config_work_dir"
+    local config_file="$config_work_dir/${config_name}.json5"
+    cp "$config_file_orig" "$config_file"
+    print_info "Config copied to writable location: $config_file"
     
     # Determine users file
     if [ -z "$users_file" ]; then
@@ -263,6 +313,22 @@ main() {
     echo ""
     print_info "Starting deployment..."
     echo ""
+    
+    # --- Dynamically fetch and trust the OpenStack certificate (if OS_INSECURE=true) ---
+    if [ "$OS_INSECURE" = "true" ]; then
+        export OS_CACERT="/tmp/openstack_cert.pem"
+        
+        # Extract the host and port from your OS_AUTH_URL
+        OS_HOST=$(echo "$OS_AUTH_URL" | awk -F/ '{print $3}')
+        
+        print_info "Fetching OpenStack certificate from $OS_HOST..."
+        echo | openssl s_client -showcerts -connect "$OS_HOST" 2>/dev/null | openssl x509 -outform PEM > "$OS_CACERT"
+        print_success "Certificate saved and OS_CACERT exported"
+    fi
+    # ------------------------------------------------------------------------------------
+    
+    # Change to backend directory so relative paths in make_it_so.sh (like configs/openstack.toml) work
+    cd /cave/backend
     
     eval "$cmd"
 }

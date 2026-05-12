@@ -31,8 +31,8 @@ RUN --mount=type=cache,target=/root/.cache \
     git submodule update --init --recursive --depth 1
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    cd /tmp/cave/backend && pip install -e ".[cli]" --no-cache-dir && \
-    pip install python-openstackclient --no-cache-dir
+    cd /tmp/cave/backend && uv pip install ".[cli]" && \
+    uv pip install python-openstackclient typer-cli
 
 # Remove .git directory to save space
 RUN rm -rf /tmp/cave/.git /tmp/cave/*/.git
@@ -66,6 +66,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     xz-utils \
     qemu-utils \
     unzip \
+    network-manager \
+    gosu \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -87,6 +89,9 @@ COPY --chown=cave:cave scripts/*.sh /cave/
 COPY --from=builder --chown=cave:cave /opt/venv /opt/venv
 COPY --from=builder --chown=cave:cave /tmp/cave /cave
 
+# Copy missing template fix
+COPY --chown=cave:cave backend/src/backend/template/output.tf.j2 /cave/backend/src/backend/template/output.tf.j2
+
 # Set permissions
 RUN chmod +x /entrypoint.sh && \
     chmod +x /cave/*.sh && \
@@ -98,7 +103,8 @@ RUN chmod +x /entrypoint.sh && \
 RUN find /cave -name "*.pyc" -delete && \
     find /cave -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
-USER cave
+# Start as root to fix permissions in the entrypoint, then drop to cave user
+USER root
 WORKDIR /home/cave
 
 ENV PATH="/opt/venv/bin:$PATH" \

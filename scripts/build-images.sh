@@ -344,19 +344,6 @@ patch_config_drive() {
     done
 }
 
-patch_flavor_map() {
-    if [ -n "$OS_FLAVOR_MAP" ]; then
-        print_info "Applying flavor mappings ($OS_FLAVOR_MAP)..."
-        IFS=',' read -ra MAPPINGS <<< "$OS_FLAVOR_MAP"
-        for map in "${MAPPINGS[@]}"; do
-            local old="${map%%:*}"
-            local new="${map##*:}"
-            find . -maxdepth 1 -name "*.pkr.hcl" \
-                -exec sed -i -E "s/flavor[[:space:]]*=[[:space:]]*\"$old\"/flavor = \"$new\"/g" {} +
-        done
-    fi
-}
-
 patch_network() {
     local build_network_id=$1
     find . -maxdepth 1 -name "*.pkr.hcl" | while read -r file; do
@@ -433,7 +420,6 @@ build_image() {
     # Apply template patches
     patch_tls
     patch_config_drive
-    patch_flavor_map
 
     # Resolve build network
     local build_network_id=""
