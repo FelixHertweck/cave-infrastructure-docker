@@ -98,21 +98,7 @@ During the interactive image selection, you can build multiple images at once by
 ```
 This will build image 1, image 3 and image 5 in sequence. Use `A` to build all images or `Q` to quit.
 
-The standard image repository expects a set of mapped OpenStack flavors. The default mapping in this repo translates the upstream image names to the flavors used by your cloud.
-
-Typical flavor mapping examples:
-- `client-medium`
-- `server-small`
-- `server-large`
-- `server-windows`
-- `m1.small`
-
-To inspect available flavors in your OpenStack environment, run:
-```bash
-docker compose run --rm cave openstack flavor list
-```
-
-If the flavor names differ from the standard repository, add the correct mapping to your `.env` file using `OS_FLAVOR_MAP`.
+The scripts automatically create required OpenStack flavors (like `client-medium`, `server-small`, `server-large`, `server-windows`) during the `post-openstack-init.sh` step, which match the requirements of the packer templates.
 
 Follow the interactive prompts to build the necessary images. Wait until the builds finish successfully.
 
