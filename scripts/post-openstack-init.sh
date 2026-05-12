@@ -156,6 +156,7 @@ add_custom_flavors() {
     
     # Packer build flavors
     create_flavor_if_missing "client-medium" 4096 20 2
+    create_flavor_if_missing "client-large" 8192 20 4
     create_flavor_if_missing "server-small" 2048 20 1
     create_flavor_if_missing "server-large" 8192 20 4
     create_flavor_if_missing "server-windows" 4096 60 2
