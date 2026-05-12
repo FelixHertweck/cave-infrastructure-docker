@@ -134,7 +134,7 @@ add_custom_flavors() {
         echo "Flavor '\''$name'\'' already exists, skipping..."
       else
         echo "Creating flavor '\''$name'\'' (${ram}MB RAM, ${vcpus} VCPUs, ${disk}GB disk)..."
-        openstack flavor create --id auto \
+        openstack flavor create \
           --ram "$ram" \
           --disk "$disk" \
           --vcpus "$vcpus" \
