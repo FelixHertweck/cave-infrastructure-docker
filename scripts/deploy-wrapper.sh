@@ -73,13 +73,15 @@ setup_openstack_toml() {
     
     # 1. Find Public Network (following build-images.sh logic)
     local public_net_id
+    local public_net_name
     public_net_id=$(openstack network list --external -f value -c ID | head -n 1)
+    public_net_name=$(openstack network list --external -f value -c Name | head -n 1)
     
     if [ -z "$public_net_id" ]; then
         print_error "Could not find an external (public) network in OpenStack!"
         exit 1
     fi
-    print_success "Found public network: $public_net_id"
+    print_success "Found public network: $public_net_id ($public_net_name)"
     
     # 2. Create/Find Management Subnet
     local mgmt_net_name="cave-mgmt-net"
@@ -96,6 +98,7 @@ setup_openstack_toml() {
     # 3. Write TOML
     cat << EOF > "$toml_path"
 public_network_id = "$public_net_id"
+floating_ip_pool = "$public_net_name"
 subnet_id = "$mgmt_subnet_id"
 EOF
     print_success "Generated $toml_path"
