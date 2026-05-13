@@ -317,19 +317,6 @@ main() {
     print_info "Starting deployment..."
     echo ""
     
-    # --- Dynamically fetch and trust the OpenStack certificate (if OS_INSECURE=true) ---
-    if [ "$OS_INSECURE" = "true" ]; then
-        export OS_CACERT="/tmp/openstack_cert.pem"
-        
-        # Extract the host and port from your OS_AUTH_URL
-        OS_HOST=$(echo "$OS_AUTH_URL" | awk -F/ '{print $3}')
-        
-        print_info "Fetching OpenStack certificate from $OS_HOST..."
-        echo | openssl s_client -showcerts -connect "$OS_HOST" 2>/dev/null | openssl x509 -outform PEM > "$OS_CACERT"
-        print_success "Certificate saved and OS_CACERT exported"
-    fi
-    # ------------------------------------------------------------------------------------
-    
     # Change to backend directory so relative paths in make_it_so.sh (like configs/openstack.toml) work
     cd /cave/backend
     

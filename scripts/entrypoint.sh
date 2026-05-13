@@ -60,6 +60,15 @@ fi
 
 print_success "OpenStack credentials validated. Ready to proceed."
 
+# Dynamically fetch and trust the OpenStack certificate (if OS_INSECURE=true)
+if [ "$OS_INSECURE" = "true" ] && [ -n "$OS_AUTH_URL" ]; then
+    export OS_CACERT="/tmp/openstack_cert.pem"
+    OS_HOST=$(echo "$OS_AUTH_URL" | awk -F/ '{print $3}')
+    print_info "Fetching OpenStack certificate from $OS_HOST..."
+    echo | openssl s_client -showcerts -connect "$OS_HOST" 2>/dev/null | openssl x509 -outform PEM > "$OS_CACERT"
+    print_success "Certificate saved to $OS_CACERT and OS_CACERT exported"
+fi
+
 # Execute the command passed to the container
 if [ "$(id -u)" = '0' ]; then
     # Use gosu to drop to the 'cave' user
