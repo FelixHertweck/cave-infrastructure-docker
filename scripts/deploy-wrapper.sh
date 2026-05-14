@@ -123,6 +123,50 @@ EOF
     print_success "Generated $toml_path"
 }
 
+patch_script_if_needed() {
+    local original="/cave/backend/make_it_so.sh"
+
+    # Resolve target IP: explicit env var takes priority, then auto-detect from OS_AUTH_URL
+    local target_ip="${CAVE_HOST_IP:-}"
+    if [ -z "$target_ip" ] && [ -n "${OS_AUTH_URL:-}" ]; then
+        local url_host
+        url_host=$(echo "$OS_AUTH_URL" | sed 's|https\?://||' | cut -d: -f1 | cut -d/ -f1)
+        if [[ "$url_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            target_ip="$url_host"
+        fi
+    fi
+
+    local target_user="${CAVE_HOST_SSH_USER:-vpnsetup}"
+
+    local needs_ip_patch=false
+    local needs_user_patch=false
+    [ -n "$target_ip" ] && [ "$target_ip" != "10.80.0.100" ] && needs_ip_patch=true
+    [ "$target_user" != "vpnsetup" ] && needs_user_patch=true
+
+    if [ "$needs_ip_patch" = false ] && [ "$needs_user_patch" = false ]; then
+        echo "$original"
+        return
+    fi
+
+    # Temp copy must live in /cave/backend/ so realpath "$0" inside the script
+    # resolves SCRIPT_DIR correctly and relative paths like WG_SERVICE_DIR still work
+    local patched
+    patched=$(mktemp /cave/backend/.make_it_so_XXXXXX.sh)
+    cp "$original" "$patched"
+    chmod +x "$patched"
+
+    if [ "$needs_ip_patch" = true ]; then
+        sed -i "s|10\.80\.0\.100|${target_ip}|g" "$patched"
+        print_info "DevStack host IP patched: 10.80.0.100 → $target_ip"
+    fi
+    if [ "$needs_user_patch" = true ]; then
+        sed -i "s|declare DEVSTACK_SSH_USER=\"vpnsetup\"|declare DEVSTACK_SSH_USER=\"${target_user}\"|" "$patched"
+        print_info "DevStack SSH user patched: vpnsetup → $target_user"
+    fi
+
+    echo "$patched"
+}
+
 show_usage() {
     cat << EOF >&2
 ${BLUE}Usage:${NC}
@@ -285,7 +329,10 @@ main() {
     print_info "Lab prefix: $lab_prefix"
     
     # Build command
-    local cmd="/cave/backend/make_it_so.sh"
+    local make_it_so_script
+    make_it_so_script=$(patch_script_if_needed)
+    [ "$make_it_so_script" != "/cave/backend/make_it_so.sh" ] && trap "rm -f '$make_it_so_script'" EXIT
+    local cmd="$make_it_so_script"
     cmd="$cmd '$config_file'"
     cmd="$cmd '$ssh_key_path'"
     
