@@ -63,6 +63,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     jq \
+    openssh-client \
+    openvpn \
     wireguard-tools \
     ca-certificates \
     git \
