@@ -70,9 +70,18 @@ setup_ovmf() {
   cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd      "$HOST_OVMF_DIR/OVMF_VARS.ms.fd"
   cp /usr/share/OVMF/OVMF_VARS_4M.fd         "$HOST_OVMF_DIR/OVMF_VARS.fd"
 
-  mount --bind "$HOST_OVMF_DIR/OVMF_CODE.secboot.fd" "$MICROSTACK_OVMF_DIR/OVMF_CODE.secboot.fd"
-  mount --bind "$HOST_OVMF_DIR/OVMF_VARS.ms.fd"      "$MICROSTACK_OVMF_DIR/OVMF_VARS.ms.fd"
-  mount --bind "$HOST_OVMF_DIR/OVMF_VARS.fd"         "$MICROSTACK_OVMF_DIR/OVMF_VARS.fd"
+  bind_if_not_mounted() {
+    local src="$1" dst="$2"
+    if findmnt --target "$dst" > /dev/null 2>&1; then
+      echo "  Already mounted: $dst"
+    else
+      mount --bind "$src" "$dst"
+    fi
+  }
+
+  bind_if_not_mounted "$HOST_OVMF_DIR/OVMF_CODE.secboot.fd" "$MICROSTACK_OVMF_DIR/OVMF_CODE.secboot.fd"
+  bind_if_not_mounted "$HOST_OVMF_DIR/OVMF_VARS.ms.fd"      "$MICROSTACK_OVMF_DIR/OVMF_VARS.ms.fd"
+  bind_if_not_mounted "$HOST_OVMF_DIR/OVMF_VARS.fd"         "$MICROSTACK_OVMF_DIR/OVMF_VARS.fd"
 
   echo "Persisting OVMF bind-mounts via systemd..."
   cat > /etc/systemd/system/microstack-ovmf-fix.service << EOF
