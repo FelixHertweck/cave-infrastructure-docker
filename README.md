@@ -54,7 +54,11 @@ docker compose run --rm cave bash
 ```
 
 ### 4. Post OpenStack Initialization
-If your OpenStack VMs cannot reach the internet, you likely need NAT for the external OpenStack network on your host machine. Run the initialization script on the host (requires root privileges):
+Run the initialization script on the host (requires root privileges). It sets up:
+- NAT so OpenStack VMs can reach the internet
+- OVMF firmware bind-mounts for Windows VMs
+- The `vpnsetup` system user (with your deployment key and iptables sudo access) needed for VPN port forwarding during deployment
+- Custom OpenStack VM flavors
 
 ```bash
 sudo ./scripts/post-openstack-init.sh
