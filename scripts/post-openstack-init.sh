@@ -101,6 +101,66 @@ EOF
   echo "OVMF firmware setup complete."
 }
 
+setup_vpnsetup_user() {
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local ssh_key_name="${SSH_KEY_NAME:-id_ed25519}"
+
+  # Resolve public key: explicit env var or auto-detect from ssh-keys/ directory
+  local pubkey_file="${CAVE_DEPLOY_PUBKEY:-}"
+  if [ -z "$pubkey_file" ]; then
+    local candidate
+    candidate="$(realpath "$script_dir/../ssh-keys/${ssh_key_name}.pub" 2>/dev/null || true)"
+    [ -f "$candidate" ] && pubkey_file="$candidate"
+  fi
+
+  if [ -z "$pubkey_file" ] || [ ! -f "$pubkey_file" ]; then
+    echo "Warning: No public key found for vpnsetup user."
+    echo "  Set CAVE_DEPLOY_PUBKEY or place the key at ssh-keys/${ssh_key_name}.pub"
+    echo "Skipping vpnsetup user setup."
+    return 0
+  fi
+
+  echo "Setting up vpnsetup user (key: $pubkey_file)..."
+
+  if ! id vpnsetup &>/dev/null; then
+    useradd -m -s /bin/bash vpnsetup
+    echo "  Created user vpnsetup"
+  else
+    echo "  User vpnsetup already exists"
+  fi
+
+  local auth_keys="/home/vpnsetup/.ssh/authorized_keys"
+  mkdir -p /home/vpnsetup/.ssh
+  chmod 700 /home/vpnsetup/.ssh
+  touch "$auth_keys"
+
+  local pubkey_content
+  pubkey_content=$(cat "$pubkey_file")
+  if ! grep -qF "$pubkey_content" "$auth_keys"; then
+    echo "$pubkey_content" >> "$auth_keys"
+    echo "  Added public key to authorized_keys"
+  else
+    echo "  Public key already in authorized_keys"
+  fi
+
+  chmod 600 "$auth_keys"
+  chown -R vpnsetup:vpnsetup /home/vpnsetup/.ssh
+
+  # Allow iptables only — covers both iptables and iptables-legacy across distros
+  local sudoers_file="/etc/sudoers.d/vpnsetup"
+  local sudoers_content="vpnsetup ALL=(ALL) NOPASSWD: /sbin/iptables, /usr/sbin/iptables, /sbin/iptables-legacy, /usr/sbin/iptables-legacy"
+  if [ ! -f "$sudoers_file" ] || ! grep -qF "NOPASSWD" "$sudoers_file"; then
+    echo "$sudoers_content" > "$sudoers_file"
+    chmod 440 "$sudoers_file"
+    echo "  Configured sudoers for iptables access"
+  else
+    echo "  sudoers already configured"
+  fi
+
+  echo "vpnsetup user setup complete."
+}
+
 add_custom_flavors() {
   echo "Adding custom VM flavors to OpenStack..."
   
@@ -179,6 +239,7 @@ main() {
   setup_nat "$iptables"
   persist_firewall_rules
   setup_ovmf
+  setup_vpnsetup_user
   add_custom_flavors
   
   echo "Post-OpenStack initialization complete."
