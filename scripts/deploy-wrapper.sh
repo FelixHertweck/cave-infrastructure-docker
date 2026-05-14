@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 print_header() {
     echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}" >&2
-    echo -e "${BLUE}║         CAVE Infrastructure - Deployment Wrapper            ║${NC}" >&2
+    echo -e "${BLUE}║         CAVE Infrastructure - Deployment Wrapper           ║${NC}" >&2
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n" >&2
 }
 
@@ -64,12 +64,20 @@ validate_ssh_key() {
 setup_openstack_toml() {
     local toml_path="/cave/backend/configs/openstack.toml"
     
-    if [ -f "$toml_path" ]; then
-        print_success "OpenStack config found: openstack.toml"
-        return 0
-    fi
+    print_info "Generating OpenStack configuration..."
     
-    print_info "OpenStack config not found. Generating automatically..."
+    # 0. Import SSH key to OpenStack
+    local ssh_key_path="/home/cave/.ssh/$SSH_KEY_NAME"
+    local ssh_key_name="${SSH_KEY_NAME%.*}"  # Remove extension if any
+    
+    print_info "Checking SSH key in OpenStack..."
+    if openstack keypair show "$ssh_key_name" >/dev/null 2>&1; then
+        print_success "SSH keypair '$ssh_key_name' already exists in OpenStack"
+    else
+        print_info "Importing SSH key '$ssh_key_name' to OpenStack..."
+        openstack keypair create --public-key "${ssh_key_path}.pub" "$ssh_key_name"
+        print_success "SSH keypair '$ssh_key_name' imported to OpenStack"
+    fi
     
     # 1. Find Public Network (following build-images.sh logic)
     local public_net_id
@@ -83,7 +91,17 @@ setup_openstack_toml() {
     fi
     print_success "Found public network: $public_net_id ($public_net_name)"
     
-    # 2. Create/Find Management Subnet
+    # 2. Get the subnet of the public network (for floating IPs)
+    local public_subnet_id
+    public_subnet_id=$(openstack subnet list --network "$public_net_id" -f value -c ID | head -n 1)
+    
+    if [ -z "$public_subnet_id" ]; then
+        print_error "Could not find a subnet for the public network!"
+        exit 1
+    fi
+    print_success "Found public network subnet: $public_subnet_id"
+    
+    # 3. Create/Find Management Subnet
     local mgmt_net_name="cave-mgmt-net"
     local mgmt_subnet_name="cave-mgmt-subnet"
     local mgmt_net_id
@@ -95,11 +113,12 @@ setup_openstack_toml() {
     print_info "Ensuring management subnet '$mgmt_subnet_name' exists..."
     mgmt_subnet_id=$(openstack subnet show "$mgmt_subnet_name" -f value -c id 2>/dev/null || openstack subnet create --network "$mgmt_net_id" --subnet-range "10.99.0.0/24" "$mgmt_subnet_name" -f value -c id)
     
-    # 3. Write TOML
+    # 4. Write TOML
     cat << EOF > "$toml_path"
 public_network_id = "$public_net_id"
 floating_ip_pool = "$public_net_name"
-subnet_id = "$mgmt_subnet_id"
+subnet_id = "$public_subnet_id"
+key_pair = "$ssh_key_name"
 EOF
     print_success "Generated $toml_path"
 }
