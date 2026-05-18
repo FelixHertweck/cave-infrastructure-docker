@@ -74,6 +74,10 @@ setup_openstack_toml() {
     if openstack keypair show "$ssh_key_name" >/dev/null 2>&1; then
         print_success "SSH keypair '$ssh_key_name' already exists in OpenStack"
     else
+        if [ ! -f "${ssh_key_path}.pub" ]; then
+            print_error "Public key file '${ssh_key_path}.pub' not found. Cannot import keypair to OpenStack."
+            exit 1
+        fi
         print_info "Importing SSH key '$ssh_key_name' to OpenStack..."
         openstack keypair create --public-key "${ssh_key_path}.pub" "$ssh_key_name"
         print_success "SSH keypair '$ssh_key_name' imported to OpenStack"
@@ -104,14 +108,24 @@ setup_openstack_toml() {
     # 3. Create/Find Management Subnet
     local mgmt_net_name="cave-mgmt-net"
     local mgmt_subnet_name="cave-mgmt-subnet"
+    local mgmt_subnet_cidr="${CAVE_MGMT_SUBNET_CIDR:-10.99.0.0/24}"
     local mgmt_net_id
     local mgmt_subnet_id
-    
+
     print_info "Ensuring management network '$mgmt_net_name' exists..."
     mgmt_net_id=$(openstack network show "$mgmt_net_name" -f value -c id 2>/dev/null || openstack network create "$mgmt_net_name" -f value -c id)
-    
+
     print_info "Ensuring management subnet '$mgmt_subnet_name' exists..."
-    mgmt_subnet_id=$(openstack subnet show "$mgmt_subnet_name" -f value -c id 2>/dev/null || openstack subnet create --network "$mgmt_net_id" --subnet-range "10.99.0.0/24" "$mgmt_subnet_name" -f value -c id)
+    if ! openstack subnet show "$mgmt_subnet_name" -f value -c id >/dev/null 2>&1; then
+        # Check for exact CIDR conflict with any existing subnet (catches duplicates, not partial overlaps)
+        if openstack subnet list -f value -c Subnet 2>/dev/null | grep -qF "$mgmt_subnet_cidr"; then
+            print_error "CIDR $mgmt_subnet_cidr already used by another subnet. Set CAVE_MGMT_SUBNET_CIDR to a different range."
+            exit 1
+        fi
+        mgmt_subnet_id=$(openstack subnet create --network "$mgmt_net_id" --subnet-range "$mgmt_subnet_cidr" "$mgmt_subnet_name" -f value -c id)
+    else
+        mgmt_subnet_id=$(openstack subnet show "$mgmt_subnet_name" -f value -c id)
+    fi
     
     # 4. Write TOML
     cat << EOF > "$toml_path"
@@ -121,6 +135,11 @@ subnet_id = "$public_subnet_id"
 key_pair = "$ssh_key_name"
 EOF
     print_success "Generated $toml_path"
+}
+
+_escape_sed_repl() {
+    # Escape &, \ and the | delimiter so the value is treated as a literal replacement.
+    printf '%s' "$1" | sed 's/[\\&|]/\\&/g'
 }
 
 patch_script_if_needed() {
@@ -137,6 +156,16 @@ patch_script_if_needed() {
     fi
 
     local target_user="${CAVE_HOST_SSH_USER:-vpnsetup}"
+
+    # Validate: reject characters that have no place in an IP/hostname or Unix username.
+    if [ -n "$target_ip" ] && [[ ! "$target_ip" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        print_error "CAVE_HOST_IP contains invalid characters: $target_ip"
+        exit 1
+    fi
+    if [[ ! "$target_user" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        print_error "CAVE_HOST_SSH_USER contains invalid characters: $target_user"
+        exit 1
+    fi
 
     local needs_ip_patch=false
     local needs_user_patch=false
@@ -156,11 +185,11 @@ patch_script_if_needed() {
     chmod +x "$patched"
 
     if [ "$needs_ip_patch" = true ]; then
-        sed -i "s|10\.80\.0\.100|${target_ip}|g" "$patched"
+        sed -i "s|10\.80\.0\.100|$(_escape_sed_repl "$target_ip")|g" "$patched"
         print_info "DevStack host IP patched: 10.80.0.100 → $target_ip"
     fi
     if [ "$needs_user_patch" = true ]; then
-        sed -i "s|declare DEVSTACK_SSH_USER=\"vpnsetup\"|declare DEVSTACK_SSH_USER=\"${target_user}\"|" "$patched"
+        sed -i "s|declare DEVSTACK_SSH_USER=\"vpnsetup\"|declare DEVSTACK_SSH_USER=\"$(_escape_sed_repl "$target_user")\"|" "$patched"
         print_info "DevStack SSH user patched: vpnsetup → $target_user"
     fi
 
@@ -440,37 +469,37 @@ main() {
     local make_it_so_script
     make_it_so_script=$(patch_script_if_needed)
     [ "$make_it_so_script" != "/cave/backend/make_it_so.sh" ] && trap "rm -f '$make_it_so_script'" EXIT
-    local cmd="$make_it_so_script"
-    cmd="$cmd '$config_file'"
-    cmd="$cmd '$ssh_key_path'"
+
+    local cmd=("$make_it_so_script" "$config_file" "$ssh_key_path")
 
     if [ -n "$users_file" ]; then
-        cmd="$cmd '$users_file'"
+        cmd+=("$users_file")
     else
-        cmd="$cmd ''"
+        cmd+=("")
     fi
 
-    cmd="$cmd --lab-prefix '$lab_prefix'"
+    cmd+=(--lab-prefix "$lab_prefix")
 
     if [ "$use_wg" = true ]; then
-        cmd="$cmd --wg"
+        cmd+=(--wg)
     fi
 
     if [ "$dry_run" = true ]; then
         print_info "Dry-run mode - would execute:"
-        echo "  bash -c \"$cmd\""
+        printf '  %q' "${cmd[@]}"
+        echo ""
         exit 0
     fi
-    
+
     # Execute
     echo ""
     print_info "Starting deployment..."
     echo ""
-    
+
     # Change to backend directory so relative paths in make_it_so.sh (like configs/openstack.toml) work
     cd /cave/backend
-    
-    eval "$cmd"
+
+    "${cmd[@]}"
     print_connection_info "$lab_prefix" "$use_wg"
 }
 
