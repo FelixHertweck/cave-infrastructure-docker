@@ -19,16 +19,18 @@
 set -euo pipefail
 
 SNAP_NAME="microstack"
-AGENT_RELPATH="lib/python3.8/site-packages/neutron/agent/ovn/metadata/agent.py"
 PATCHED_DIR="/var/snap/microstack/common/fix-ovn-metadata"
 SERVICE_NAME="fix-ovn-metadata-agent"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 snap_agent_path() {
-    local rev
+    local rev snap_root found
     rev=$(readlink "/snap/${SNAP_NAME}/current") || die "MicroStack snap not found"
-    echo "/snap/${SNAP_NAME}/${rev}/${AGENT_RELPATH}"
+    snap_root="/snap/${SNAP_NAME}/${rev}"
+    found=$(find "$snap_root" -path "*/neutron/agent/ovn/metadata/agent.py" | head -n 1)
+    [ -n "$found" ] || die "agent.py not found under $snap_root (snap layout may have changed)"
+    echo "$found"
 }
 
 patch_file() {
@@ -64,8 +66,10 @@ while i < len(lines):
         patched += [
             sp + 'try:\n',
             ' ' * (indent + 4) + stripped,
-            sp + 'except Exception:\n',
-            sp + '    pass  # EOPNOTSUPP on newer kernels under snap confinement\n',
+            sp + 'except OSError as _exc:  # EOPNOTSUPP expected on newer kernels under snap confinement\n',
+            sp + '    import errno as _errno\n',
+            sp + '    if _exc.errno != _errno.EOPNOTSUPP:\n',
+            sp + '        LOG.warning("Unexpected addr.delete error (errno=%s): %s", _exc.errno, _exc)\n',
         ]
         changes += 1
         i += 1
