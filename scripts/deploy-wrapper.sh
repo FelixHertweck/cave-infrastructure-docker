@@ -326,8 +326,53 @@ main() {
     if [ -z "$lab_prefix" ]; then
         lab_prefix="${LAB_PREFIX:-$config_name}"
     fi
-    print_info "Lab prefix: $lab_prefix"
-    
+    # Interactive summary + edit loop
+    while true; do
+        echo ""
+        print_info "Deployment Summary:"
+        echo "  Config:        $config_name"
+        echo "  SSH Key:       $SSH_KEY_NAME"
+        if [ -n "$users_file" ]; then
+            echo "  Users File:    $(basename $users_file)"
+        fi
+        echo "  Lab Prefix:    $lab_prefix"
+        echo "  VPN:           $([ "$use_wg" = true ] && echo "WireGuard" || echo "OpenVPN")"
+        echo ""
+        echo "  [y/Enter] Deploy    [v] Change VPN    [p] Change prefix    [n] Cancel"
+        echo ""
+        echo -n "Choice: "
+        read -r choice
+
+        case "$choice" in
+            y|Y|"")
+                break
+                ;;
+            v|V)
+                if [ "$use_wg" = true ]; then
+                    use_wg=false
+                    print_info "Switched to OpenVPN"
+                else
+                    use_wg=true
+                    print_info "Switched to WireGuard"
+                fi
+                ;;
+            p|P)
+                echo -n "New lab prefix [$lab_prefix]: "
+                read -r new_prefix
+                if [ -n "$new_prefix" ]; then
+                    lab_prefix="$new_prefix"
+                fi
+                ;;
+            n|N)
+                print_info "Deployment cancelled"
+                exit 0
+                ;;
+            *)
+                print_error "Invalid choice"
+                ;;
+        esac
+    done
+
     # Build command
     local make_it_so_script
     make_it_so_script=$(patch_script_if_needed)
@@ -335,46 +380,22 @@ main() {
     local cmd="$make_it_so_script"
     cmd="$cmd '$config_file'"
     cmd="$cmd '$ssh_key_path'"
-    
+
     if [ -n "$users_file" ]; then
         cmd="$cmd '$users_file'"
     else
         cmd="$cmd ''"
     fi
-    
+
     cmd="$cmd --lab-prefix '$lab_prefix'"
-    
+
     if [ "$use_wg" = true ]; then
         cmd="$cmd --wg"
-        print_info "Using WireGuard VPN"
-    else
-        print_info "Using OpenVPN (default)"
     fi
-    
-    # Show summary
-    echo ""
-    print_info "Deployment Summary:"
-    echo "  Config:        $config_name"
-    echo "  SSH Key:       $SSH_KEY_NAME"
-    if [ -n "$users_file" ]; then
-        echo "  Users File:    $(basename $users_file)"
-    fi
-    echo "  Lab Prefix:    $lab_prefix"
-    echo "  VPN:           $([ "$use_wg" = true ] && echo "WireGuard" || echo "OpenVPN")"
-    echo ""
-    
+
     if [ "$dry_run" = true ]; then
         print_info "Dry-run mode - would execute:"
         echo "  bash -c \"$cmd\""
-        exit 0
-    fi
-    
-    # Confirmation
-    echo -n "Proceed with deployment? (y/N): "
-    read -r confirm
-    
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        print_info "Deployment cancelled"
         exit 0
     fi
     
