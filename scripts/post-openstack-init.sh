@@ -160,8 +160,16 @@ setup_vpnsetup_user() {
   local sudoers_file="/etc/sudoers.d/vpnsetup"
   local sudoers_content="vpnsetup ALL=(ALL) NOPASSWD: /sbin/iptables, /usr/sbin/iptables, /sbin/iptables-legacy, /usr/sbin/iptables-legacy"
   if [ ! -f "$sudoers_file" ] || ! grep -qF "NOPASSWD" "$sudoers_file"; then
-    echo "$sudoers_content" > "$sudoers_file"
-    chmod 440 "$sudoers_file"
+    local sudoers_tmp
+    sudoers_tmp=$(mktemp)
+    printf '%s\n' "$sudoers_content" > "$sudoers_tmp"
+    if ! visudo -cf "$sudoers_tmp" >/dev/null 2>&1; then
+      rm -f "$sudoers_tmp"
+      echo "  ERROR: generated sudoers entry failed visudo check — not installed" >&2
+      return 1
+    fi
+    install -m 0440 "$sudoers_tmp" "$sudoers_file"
+    rm -f "$sudoers_tmp"
     echo "  Configured sudoers for iptables access"
   else
     echo "  sudoers already configured"
