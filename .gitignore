@@ -1,3 +1,4 @@
 .env
 .openrc
 windows-image-builder/output
+out/*
