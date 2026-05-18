@@ -63,6 +63,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     jq \
+    iproute2 \
     openssh-client \
     openvpn \
     wireguard-tools \
@@ -74,11 +75,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     unzip \
     network-manager \
     gosu \
+    libcap2-bin \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Optional: Install ansible only if needed (comment out if not required)
-# RUN apt-get update && apt-get install -y --no-install-recommends ansible && rm -rf /var/lib/apt/lists/*
+
+# Allow cave user to run OpenVPN with NET_ADMIN without root
+RUN setcap cap_net_admin+eip /usr/sbin/openvpn
 
 # Install Packer cleanly
 RUN wget -q https://releases.hashicorp.com/packer/1.10.2/packer_1.10.2_linux_amd64.zip && \
