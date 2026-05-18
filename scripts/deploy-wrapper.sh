@@ -167,6 +167,69 @@ patch_script_if_needed() {
     echo "$patched"
 }
 
+print_connection_info() {
+    local lab_prefix="$1"
+    local use_wg="$2"
+
+    local vpn_type
+    vpn_type=$([ "$use_wg" = true ] && echo "wg" || echo "openvpn")
+    local backend_out="/cave/backend/out/$lab_prefix"
+    local vpn_out="$backend_out/$vpn_type"
+    local tofu_json="$backend_out/tofu.json"
+
+    [ ! -f "$tofu_json" ] && { print_info "No tofu.json found, skipping connection info"; return; }
+
+    local gateway
+    gateway=$(jq -r 'to_entries[]
+        | select(.key | test("^vpn_instance_info"))
+        | select(.value.value.floating_ip != null)
+        | .value.value.floating_ip' "$tofu_json" | head -1)
+
+    local jump_host="${CAVE_OPENSTACK_HOST:-<JUMP_HOST>}"
+    local jump_port="${CAVE_OPENSTACK_PORT:-22}"
+
+    echo -e "\n${BLUE}╔════════════════════════════════════════════════════════════╗${NC}" >&2
+    echo -e "${BLUE}║                    Connection Info                         ║${NC}" >&2
+    echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n" >&2
+
+    echo -e "${GREEN}► VPN Configs${NC}" >&2
+    echo "  Teams:   $vpn_out/teams/" >&2
+    echo "  Admins:  $vpn_out/admins/" >&2
+    if [ "$vpn_type" = "openvpn" ]; then
+        local ovpn_file
+        ovpn_file=$(find "$vpn_out/admins" -name "*.ovpn" 2>/dev/null | head -1)
+        if [ -n "$ovpn_file" ]; then
+            local vpn_endpoint
+            vpn_endpoint=$(grep "^remote " "$ovpn_file" | awk '{print $2":"$3}')
+            echo "  VPN Endpoint: $vpn_endpoint" >&2
+        fi
+    fi
+    echo "" >&2
+
+    echo -e "${GREEN}► Kali Guacamole Access${NC}" >&2
+    echo "  Credentials: kali / kali" >&2
+    echo "  VPN Server:  $gateway" >&2
+    echo "" >&2
+
+    local local_port=8443
+    local inner_port=18443
+    while IFS= read -r ip; do
+        [ -z "$ip" ] && continue
+        echo -e "  ${YELLOW}https://localhost:${local_port}${NC}  →  ${ip}:443" >&2
+        echo "  ssh -p $jump_port -L ${local_port}:localhost:${inner_port} ${jump_host} \\" >&2
+        echo "    \"ssh -N -L ${inner_port}:${ip}:443 ubuntu@${gateway}\"" >&2
+        echo "" >&2
+        local_port=$((local_port + 1))
+        inner_port=$((inner_port + 1))
+    done < <(jq -r 'to_entries[]
+        | select(.key | test("kali.*output_ansible"))
+        | .value.value.ipv4' "$tofu_json" 2>/dev/null | sort)
+
+    if [ -z "${CAVE_OPENSTACK_HOST:-}" ]; then
+        echo -e "  ${YELLOW}Tip: Set CAVE_OPENSTACK_HOST and CAVE_OPENSTACK_PORT in .env${NC}" >&2
+    fi
+}
+
 show_usage() {
     cat << EOF >&2
 ${BLUE}Usage:${NC}
@@ -408,6 +471,7 @@ main() {
     cd /cave/backend
     
     eval "$cmd"
+    print_connection_info "$lab_prefix" "$use_wg"
 }
 
 # Run main function
