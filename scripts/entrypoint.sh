@@ -21,15 +21,18 @@ print_success() {
 
 # Fix permissions if running as root
 if [ "$(id -u)" = '0' ]; then
-    print_info "Running as root. Fixing permissions for /cave/backend/out and /cave/backend/configs..."
-    
-    # Ensure these directories exist (they should be mounted or copied)
     mkdir -p /cave/backend/out /cave/backend/configs
-    
-    # Recursively change ownership to the 'cave' user (UID 1000)
-    chown -R cave:cave /cave/backend/out /cave/backend/configs
-    
-    print_success "Permissions fixed."
+
+    # Recursively chown only the output directory (generated content, never bind-mounted from host).
+    if ! chown -R cave:cave /cave/backend/out 2>/dev/null; then
+        print_info "Warning: could not chown /cave/backend/out (remote/overlay fs?); cave user may lack write access."
+    fi
+
+    # For configs, only fix the directory itself so cave can create openstack.toml inside it.
+    # Avoid recursively chowning bind-mounted host config files, which would change host ownership.
+    if ! chown cave:cave /cave/backend/configs 2>/dev/null; then
+        print_info "Warning: could not chown /cave/backend/configs (remote/overlay fs?); cave user may lack write access."
+    fi
 fi
 
 # Source OpenStack credentials if available
