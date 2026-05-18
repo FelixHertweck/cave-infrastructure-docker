@@ -22,9 +22,13 @@ services:
     stdin_open: true
     tty: true
 
-    # Capabilities for WireGuard (if needed)
+    # Capabilities for WireGuard/VPN and network operations
     cap_add:
       - NET_ADMIN
+
+    # TUN device required for OpenVPN
+    devices:
+      - /dev/net/tun:/dev/net/tun
 
     depends_on:
       - dind
