@@ -100,6 +100,7 @@ COPY --from=builder --chown=cave:cave /tmp/cave /cave
 
 # Copy missing template fix
 COPY --chown=cave:cave backend/src/backend/template/output.tf.j2 /cave/backend/src/backend/template/output.tf.j2
+COPY --from=builder --chown=cave:cave /tmp/cave/vpn-service/deploy_openvpn.py /cave/vpn-service/deploy_openvpn.py
 
 # Set permissions
 RUN chmod +x /entrypoint.sh && \
