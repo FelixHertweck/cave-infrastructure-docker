@@ -17,20 +17,20 @@ main() {
     print_header
     
     echo -e "What would you like to do?"
-    echo -e "  ${YELLOW}1)${NC} Deploy Infrastructure (deploy-wrapper.sh)"
+    echo -e "  ${YELLOW}1)${NC} Upload Windows Images (upload-windows-image.sh)"
     echo -e "  ${YELLOW}2)${NC} Pre-Build Setup (pre-build-images.sh)"
     echo -e "  ${YELLOW}3)${NC} Build Base Images (build-images.sh)"
-    echo -e "  ${YELLOW}4)${NC} Destroy Infrastructure (exterminate.sh)"
-    echo -e "  ${YELLOW}5)${NC} Upload Windows Images (upload-windows-image.sh)"
+    echo -e "  ${YELLOW}4)${NC} Deploy Infrastructure (deploy-wrapper.sh)"
+    echo -e "  ${YELLOW}5)${NC} Destroy Infrastructure (exterminate.sh)"
     echo -e "  ${YELLOW}Q)${NC} Quit"
     echo ""
-    
+
     read -p "Select an action [1-5, Q]: " choice
     echo ""
 
     case "$choice" in
         1)
-            exec /cave/deploy-wrapper.sh
+            exec /cave/upload-windows-image.sh
             ;;
         2)
             exec /cave/pre-build-images.sh
@@ -39,6 +39,9 @@ main() {
             exec /cave/build-images.sh
             ;;
         4)
+            exec /cave/deploy-wrapper.sh
+            ;;
+        5)
             # Find possible lab prefixes if possible
             default_prefix="${LAB_PREFIX:-}"
             if [ -n "$default_prefix" ]; then
@@ -47,16 +50,13 @@ main() {
             else
                 read -p "Enter Lab Prefix to destroy: " prefix
             fi
-            
+
             if [ -n "$prefix" ]; then
                 exec /cave/backend/exterminate.sh "$prefix"
             else
                 echo -e "${RED}Error: Lab prefix cannot be empty.${NC}"
                 exit 1
             fi
-            ;;
-        5)
-            exec /cave/upload-windows-image.sh
             ;;
         q|Q)
             echo "Exiting..."
