@@ -139,6 +139,17 @@ docker compose run --rm cave /cave/deploy-wrapper.sh day1 --wg --lab-prefix my-t
 
 ## Troubleshooting
 
+### ❌ OVN Metadata Agent failing on newer kernels (MicroStack)
+
+**Problem**: On newer kernels, the MicroStack OVN metadata agent may fail to start, causing VM networking issues (VMs cannot reach the metadata service or internet).
+
+**Solution**: Run the provided fix script on the OpenStack host:
+```bash
+sudo ./scripts/fix_ovn_metadata.sh
+```
+
+This script applies a sustainable patch to the OVN metadata agent service, making it compatible with newer kernel versions.
+
 ### ❌ "Please enter your OpenStack Password..." prompt appears
 
 **Problem**: Your `.openrc` file contains the interactive password prompt.
