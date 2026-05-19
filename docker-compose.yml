@@ -33,6 +33,10 @@ services:
     depends_on:
       - dind
 
+    # Must be 'bridge', not 'host' — host networking causes tun0 routing
+    # conflicts that break the OpenVPN tunnel.
+    network_mode: bridge
+
     environment:
       # Use the Docker daemon provided by the DinD service.
       - DOCKER_HOST=tcp://127.0.0.1:2375
@@ -53,8 +57,6 @@ services:
 
       # Windows image directory
       - ./windows-image-builder/output:/cave/windows-images:ro
-
-    network_mode: host
 
 volumes:
   dind-data:
