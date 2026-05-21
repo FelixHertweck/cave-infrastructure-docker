@@ -384,9 +384,11 @@ main() {
         config_name="${configs[$((choice-1))]}"
     fi
     
-    # Validate config file
-    local config_file_orig="/cave/backend/configs/${config_name}.json5"
-    if ! validate_file "$config_file_orig"; then
+    # Validate config file (search recursively to support nested config directories)
+    local config_file_orig
+    config_file_orig=$(find /cave/backend/configs -name "${config_name}.json5" -not -name ".*" | head -1)
+    if [ -z "$config_file_orig" ]; then
+        print_error "File not found: ${config_name}.json5 (searched in /cave/backend/configs)"
         exit 1
     fi
     print_success "Config file found: $config_name.json5"
