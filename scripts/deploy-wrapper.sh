@@ -477,7 +477,13 @@ main() {
     if [ -n "$users_file" ]; then
         cmd+=("$users_file")
     else
-        cmd+=("")
+        # deploy_openvpn.py/deploy_wg.py require a config file; generate a minimal stub
+        local stub_users_file
+        stub_users_file=$(mktemp /tmp/cave_users_XXXXXX.json)
+        echo '{"users": [], "teams": []}' > "$stub_users_file"
+        trap "rm -f '$make_it_so_script' '$stub_users_file'" EXIT
+        cmd+=("$stub_users_file")
+        print_info "No users file provided — using empty stub (no attendee VPN configs)"
     fi
 
     cmd+=(--lab-prefix "$lab_prefix")
