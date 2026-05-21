@@ -229,7 +229,7 @@ print_connection_info() {
         ovpn_file=$(find "$vpn_out/admins" -name "*.ovpn" 2>/dev/null | head -1)
         if [ -n "$ovpn_file" ]; then
             local vpn_endpoint
-            vpn_endpoint=$(grep "^remote " "$ovpn_file" | awk '{print $2":"$3}')
+            vpn_endpoint=$(grep -E "^\s*remote " "$ovpn_file" | grep -v "remote-" | awk '{print $2":"$3}')
             echo "  VPN Endpoint: $vpn_endpoint" >&2
         fi
     fi
