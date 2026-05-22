@@ -273,6 +273,7 @@ ${BLUE}Options:${NC}
   --wg                    Use WireGuard for VPN (default: OpenVPN)
   --lab-prefix PREFIX     Custom lab prefix (default: from .env or config name)
   --users FILE            User configuration file (default: users_<config>.json)
+  --no-public             Disable static/public IP for VPN (default: enabled)
   --dry-run               Show what would be executed without running
   --help                  Show this help message
 
@@ -306,6 +307,7 @@ main() {
     # Parse arguments
     local config_name=""
     local use_wg=false
+    local use_public=true
     local lab_prefix=""
     local users_file=""
     local dry_run=false
@@ -323,6 +325,10 @@ main() {
             --users)
                 users_file="$2"
                 shift 2
+                ;;
+            --no-public)
+                use_public=false
+                shift
                 ;;
             --dry-run)
                 dry_run=true
@@ -431,8 +437,9 @@ main() {
         fi
         echo "  Lab Prefix:    $lab_prefix"
         echo "  VPN:           $([ "$use_wg" = true ] && echo "WireGuard" || echo "OpenVPN")"
+        echo "  Static VPN IP: $([ "$use_public" = true ] && echo "yes (--public)" || echo "no")"
         echo ""
-        echo "  [y/Enter] Deploy    [v] Change VPN    [p] Change prefix    [n] Cancel"
+        echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle static IP    [p] Change prefix    [n] Cancel"
         echo ""
         echo -n "Choice: "
         read -r choice
@@ -448,6 +455,15 @@ main() {
                 else
                     use_wg=true
                     print_info "Switched to WireGuard"
+                fi
+                ;;
+            s|S)
+                if [ "$use_public" = true ]; then
+                    use_public=false
+                    print_info "Static VPN IP disabled"
+                else
+                    use_public=true
+                    print_info "Static VPN IP enabled (--public)"
                 fi
                 ;;
             p|P)
@@ -492,6 +508,10 @@ main() {
         cmd+=(--wg)
     fi
 
+    if [ "$use_public" = true ]; then
+        cmd+=(--public)
+    fi
+
     if [ "$dry_run" = true ]; then
         print_info "Dry-run mode - would execute:"
         printf '  %q' "${cmd[@]}"
@@ -506,7 +526,7 @@ main() {
 
     # Change to backend directory so relative paths in make_it_so.sh (like configs/openstack.toml) work
     cd /cave/backend
-
+ 
     "${cmd[@]}"
     print_connection_info "$lab_prefix" "$use_wg"
 }
