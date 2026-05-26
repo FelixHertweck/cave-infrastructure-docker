@@ -66,10 +66,16 @@ while i < len(lines):
         patched += [
             sp + 'try:\n',
             ' ' * (indent + 4) + stripped,
-            sp + 'except OSError as _exc:  # EOPNOTSUPP expected on newer kernels under snap confinement\n',
-            sp + '    import errno as _errno\n',
-            sp + '    if _exc.errno != _errno.EOPNOTSUPP:\n',
-            sp + '        LOG.warning("Unexpected addr.delete error (errno=%s): %s", _exc.errno, _exc)\n',
+            # The OSError(EOPNOTSUPP) is serialised across the oslo.privsep IPC
+            # channel and re-raised as InterfaceOperationNotSupported, so we
+            # must catch Exception and check the type name instead of OSError.
+            sp + 'except Exception as _exc:  # EOPNOTSUPP via privsep on newer kernels under snap confinement\n',
+            sp + '    _ename = type(_exc).__name__\n',
+            sp + '    _is_eopnotsupp = (isinstance(_exc, OSError) and _exc.errno == 95)\n',
+            sp + '    _is_privsep_eopnotsupp = "OperationNotSupported" in _ename\n',
+            sp + '    if not (_is_eopnotsupp or _is_privsep_eopnotsupp):\n',
+            sp + '        raise\n',
+            sp + '    LOG.debug("Ignoring EOPNOTSUPP on addr.delete (%s): %s", _ename, _exc)\n',
         ]
         changes += 1
         i += 1
@@ -87,19 +93,22 @@ else:
 PYEOF
 }
 
+unmount_all() {
+    # Must run before patch_file: if the bind mount is already active,
+    # snap_agent_path and PATCHED_DIR/agent.py share the same inode and cp fails.
+    while IFS= read -r f; do
+        if mountpoint -q "$f" 2>/dev/null; then
+            umount "$f" 2>/dev/null && echo "Unmounted: $f" || true
+        fi
+    done < <(find "/snap/${SNAP_NAME}" -name "agent.py" -path "*/ovn/metadata/*" 2>/dev/null)
+}
+
 apply_bindmount() {
     local snap_agent
     snap_agent=$(snap_agent_path)
     local dst="$PATCHED_DIR/agent.py"
 
     [ -f "$dst" ] || die "Patched file missing: $dst — run 'install' first"
-
-    # Unmount any stale bind mounts from previous snap revisions
-    while IFS= read -r f; do
-        if mountpoint -q "$f" 2>/dev/null; then
-            umount "$f" 2>/dev/null && echo "Unmounted stale: $f" || true
-        fi
-    done < <(find "/snap/${SNAP_NAME}" -name "agent.py" -path "*/ovn/metadata/*" 2>/dev/null)
 
     mount --bind "$dst" "$snap_agent"
     echo "Bind mount applied: $dst -> $snap_agent"
@@ -136,12 +145,14 @@ case "$cmd" in
     apply)
         [ "$EUID" -eq 0 ] || die "Must run as root"
         mkdir -p "$PATCHED_DIR"
+        unmount_all
         patch_file "$(snap_agent_path)" "$PATCHED_DIR/agent.py"
         apply_bindmount
         ;;
     install)
         [ "$EUID" -eq 0 ] || die "Must run as root"
         mkdir -p "$PATCHED_DIR"
+        unmount_all
         patch_file "$(snap_agent_path)" "$PATCHED_DIR/agent.py"
         apply_bindmount
         install_service
