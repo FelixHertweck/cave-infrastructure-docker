@@ -284,7 +284,10 @@ ${BLUE}Options:${NC}
   --wg                    Use WireGuard for VPN (default: OpenVPN)
   --lab-prefix PREFIX     Custom lab prefix (default: from .env or config name)
   --users FILE            User configuration file (default: users_<config>.json)
-  --no-public             Disable static/public IP for VPN (default: enabled)
+  --no-public             Disable public VPN IP (default: enabled)
+                          Without --public, VPN is only reachable internally
+  --public-vpn-port PORT  UDP port for the public VPN endpoint (default: 51800)
+                          Only relevant when --public is active
   --dry-run               Show what would be executed without running
   --help                  Show this help message
 
@@ -319,6 +322,7 @@ main() {
     local config_name=""
     local use_wg=false
     local use_public=true
+    local public_vpn_port="${CAVE_PUBLIC_VPN_PORT:-51800}"
     local lab_prefix=""
     local users_file=""
     local dry_run=false
@@ -340,6 +344,10 @@ main() {
             --no-public)
                 use_public=false
                 shift
+                ;;
+            --public-vpn-port)
+                public_vpn_port="$2"
+                shift 2
                 ;;
             --dry-run)
                 dry_run=true
@@ -448,9 +456,17 @@ main() {
         fi
         echo "  Lab Prefix:    $lab_prefix"
         echo "  VPN:           $([ "$use_wg" = true ] && echo "WireGuard" || echo "OpenVPN")"
-        echo "  Static VPN IP: $([ "$use_public" = true ] && echo "yes (--public)" || echo "no")"
+        if [ "$use_public" = true ]; then
+            echo "  Public VPN:    enabled  →  ${CAVE_PUBLIC_IP:-<CAVE_PUBLIC_IP not set>}:$public_vpn_port"
+        else
+            echo "  Public VPN:    disabled (internal access only)"
+        fi
         echo ""
-        echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle static IP    [p] Change prefix    [n] Cancel"
+        if [ "$use_public" = true ]; then
+            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [o] Change VPN port    [p] Change prefix    [n] Cancel"
+        else
+            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [p] Change prefix    [n] Cancel"
+        fi
         echo ""
         echo -n "Choice: "
         read -r choice
@@ -471,10 +487,21 @@ main() {
             s|S)
                 if [ "$use_public" = true ]; then
                     use_public=false
-                    print_info "Static VPN IP disabled"
+                    print_info "Public VPN disabled (internal access only)"
                 else
                     use_public=true
-                    print_info "Static VPN IP enabled (--public)"
+                    print_info "Public VPN enabled (${CAVE_PUBLIC_IP:-<set CAVE_PUBLIC_IP>}:$public_vpn_port)"
+                fi
+                ;;
+            o|O)
+                if [ "$use_public" = true ]; then
+                    echo -n "New public VPN port [$public_vpn_port]: "
+                    read -r new_port
+                    if [ -n "$new_port" ]; then
+                        public_vpn_port="$new_port"
+                    fi
+                else
+                    print_error "Public VPN is disabled — enable it first with [s]"
                 fi
                 ;;
             p|P)
@@ -494,11 +521,17 @@ main() {
         esac
     done
 
-    # Validate that CAVE_PUBLIC_IP is set when --public is used
-    if [ "$use_public" = true ] && [ -z "${CAVE_PUBLIC_IP:-}" ]; then
-        print_error "CAVE_PUBLIC_IP is not set but --public is enabled!"
-        print_error "Set CAVE_PUBLIC_IP to the external/public IP of your OpenStack host in .env"
-        exit 1
+    # Validate public VPN settings
+    if [ "$use_public" = true ]; then
+        if [ -z "${CAVE_PUBLIC_IP:-}" ]; then
+            print_error "CAVE_PUBLIC_IP is not set but public VPN is enabled!"
+            print_error "Set CAVE_PUBLIC_IP to the external/public IP of your OpenStack host in .env"
+            exit 1
+        fi
+        if ! [[ "$public_vpn_port" =~ ^[0-9]+$ ]] || [ "$public_vpn_port" -lt 1 ] || [ "$public_vpn_port" -gt 65535 ]; then
+            print_error "Invalid --public-vpn-port: $public_vpn_port (must be 1–65535)"
+            exit 1
+        fi
     fi
 
     # Build command
@@ -527,7 +560,7 @@ main() {
     fi
 
     if [ "$use_public" = true ]; then
-        cmd+=(--public)
+        cmd+=(--public --public-vpn-port "$public_vpn_port")
     fi
 
     if [ "$dry_run" = true ]; then

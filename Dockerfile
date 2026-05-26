@@ -6,7 +6,7 @@ FROM python:3.12.9-slim-bookworm AS builder
 
 # Forked repository
 ARG CAVE_REPO=https://gitlab.opencode.de/oc000142689289/cave-infrastructure.git
-ARG CAVE_REF=b978c9dd6470c35adb1d3a1285adbeb119ef5a40
+ARG CAVE_REF=c0c8128c703b738363545251e0c7cdb19131e8ca
 
 # Install build dependencies only in builder stage
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
