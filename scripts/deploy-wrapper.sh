@@ -156,6 +156,7 @@ patch_script_if_needed() {
     fi
 
     local target_user="${CAVE_HOST_SSH_USER:-vpnsetup}"
+    local target_public_ip="${CAVE_PUBLIC_IP:-}"
 
     # Validate: reject characters that have no place in an IP/hostname or Unix username.
     if [ -n "$target_ip" ] && [[ ! "$target_ip" =~ ^[a-zA-Z0-9._-]+$ ]]; then
@@ -166,13 +167,19 @@ patch_script_if_needed() {
         print_error "CAVE_HOST_SSH_USER contains invalid characters: $target_user"
         exit 1
     fi
+    if [ -n "$target_public_ip" ] && [[ ! "$target_public_ip" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        print_error "CAVE_PUBLIC_IP contains invalid characters: $target_public_ip"
+        exit 1
+    fi
 
     local needs_ip_patch=false
     local needs_user_patch=false
+    local needs_public_ip_patch=false
     [ -n "$target_ip" ] && [ "$target_ip" != "10.80.0.100" ] && needs_ip_patch=true
     [ "$target_user" != "vpnsetup" ] && needs_user_patch=true
+    [ -n "$target_public_ip" ] && [ "$target_public_ip" != "195.37.231.202" ] && needs_public_ip_patch=true
 
-    if [ "$needs_ip_patch" = false ] && [ "$needs_user_patch" = false ]; then
+    if [ "$needs_ip_patch" = false ] && [ "$needs_user_patch" = false ] && [ "$needs_public_ip_patch" = false ]; then
         echo "$original"
         return
     fi
@@ -191,6 +198,10 @@ patch_script_if_needed() {
     if [ "$needs_user_patch" = true ]; then
         sed -i "s|declare DEVSTACK_SSH_USER=\"vpnsetup\"|declare DEVSTACK_SSH_USER=\"$(_escape_sed_repl "$target_user")\"|" "$patched"
         print_info "DevStack SSH user patched: vpnsetup → $target_user"
+    fi
+    if [ "$needs_public_ip_patch" = true ]; then
+        sed -i "s|195\.37\.231\.202|$(_escape_sed_repl "$target_public_ip")|g" "$patched"
+        print_info "DevStack public IP patched: 195.37.231.202 → $target_public_ip"
     fi
 
     echo "$patched"
@@ -482,6 +493,13 @@ main() {
                 ;;
         esac
     done
+
+    # Validate that CAVE_PUBLIC_IP is set when --public is used
+    if [ "$use_public" = true ] && [ -z "${CAVE_PUBLIC_IP:-}" ]; then
+        print_error "CAVE_PUBLIC_IP is not set but --public is enabled!"
+        print_error "Set CAVE_PUBLIC_IP to the external/public IP of your OpenStack host in .env"
+        exit 1
+    fi
 
     # Build command
     local make_it_so_script
