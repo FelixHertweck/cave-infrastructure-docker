@@ -309,7 +309,7 @@ EOF
     
     # List available configs
     if [ -d "/cave/backend/configs" ]; then
-        find /cave/backend/configs -name "*.json5" -not -name ".*" | sed 's|.*/||; s|\.json5||' | sed "s|^|  - |" >&2
+        find /cave/backend/configs -name "*.json5" -not -name ".*" | sed 's|/cave/backend/configs/||; s|\.json5||' | sort | sed "s|^|  - |" >&2
     else
         echo "  (configs directory not found)" >&2
     fi
@@ -385,7 +385,7 @@ main() {
     # Get config name (interactive if not provided)
     if [ -z "$config_name" ]; then
         print_info "Available configurations:"
-        local configs=($(find /cave/backend/configs -name "*.json5" -not -name ".*" | sed 's|.*/||; s|\.json5||' | sort))
+        local configs=($(find /cave/backend/configs -name "*.json5" -not -name ".*" | sed 's|/cave/backend/configs/||; s|\.json5||' | sort))
         
         if [ ${#configs[@]} -eq 0 ]; then
             print_error "No configuration files found in /cave/backend/configs"
@@ -409,29 +409,37 @@ main() {
         config_name="${configs[$((choice-1))]}"
     fi
     
-    # Validate config file (search recursively to support nested config directories)
+    # Validate config file — try direct path first (works for both bare names and sub-paths),
+    # fall back to recursive name search so bare names without subdir still resolve.
     local config_file_orig
-    config_file_orig=$(find /cave/backend/configs -name "${config_name}.json5" -not -name ".*" | head -1)
+    if [ -f "/cave/backend/configs/${config_name}.json5" ]; then
+        config_file_orig="/cave/backend/configs/${config_name}.json5"
+    else
+        config_file_orig=$(find /cave/backend/configs -name "$(basename "${config_name}").json5" -not -name ".*" | head -1)
+    fi
     if [ -z "$config_file_orig" ]; then
         print_error "File not found: ${config_name}.json5 (searched in /cave/backend/configs)"
         exit 1
     fi
     print_success "Config file found: $config_name.json5"
-    
+
+    local config_basename
+    config_basename=$(basename "$config_name")
+
     # Copy config to a writable location to allow patching (configs dir might be problematic)
     local config_work_dir="/tmp/cave_configs"
     mkdir -p "$config_work_dir"
-    local config_file="$config_work_dir/${config_name}.json5"
+    local config_file="$config_work_dir/${config_basename}.json5"
     cp "$config_file_orig" "$config_file"
     print_info "Config copied to writable location: $config_file"
     
     # Determine users file
     if [ -z "$users_file" ]; then
-        users_file="/cave/backend/configs/users_${config_name}.json"
+        users_file="/cave/backend/configs/users_${config_basename}.json"
         if [ -f "$users_file" ]; then
-            print_success "Using users file: users_${config_name}.json"
+            print_success "Using users file: users_${config_basename}.json"
         else
-            print_info "No users file found for $config_name (optional)"
+            print_info "No users file found for $config_basename (optional)"
             users_file=""
         fi
     else
@@ -443,7 +451,7 @@ main() {
     
     # Determine lab prefix
     if [ -z "$lab_prefix" ]; then
-        lab_prefix="${LAB_PREFIX:-$config_name}"
+        lab_prefix="${LAB_PREFIX:-$config_basename}"
     fi
     # Interactive summary + edit loop
     while true; do
