@@ -104,30 +104,8 @@ setup_openstack_toml() {
         exit 1
     fi
     print_success "Found public network subnet: $public_subnet_id"
-    
-    # 3. Create/Find Management Subnet
-    local mgmt_net_name="cave-mgmt-net"
-    local mgmt_subnet_name="cave-mgmt-subnet"
-    local mgmt_subnet_cidr="${CAVE_MGMT_SUBNET_CIDR:-10.99.0.0/24}"
-    local mgmt_net_id
-    local mgmt_subnet_id
 
-    print_info "Ensuring management network '$mgmt_net_name' exists..."
-    mgmt_net_id=$(openstack network show "$mgmt_net_name" -f value -c id 2>/dev/null || openstack network create "$mgmt_net_name" -f value -c id)
-
-    print_info "Ensuring management subnet '$mgmt_subnet_name' exists..."
-    if ! openstack subnet show "$mgmt_subnet_name" -f value -c id >/dev/null 2>&1; then
-        # Check for exact CIDR conflict with any existing subnet (catches duplicates, not partial overlaps)
-        if openstack subnet list -f value -c Subnet 2>/dev/null | grep -qF "$mgmt_subnet_cidr"; then
-            print_error "CIDR $mgmt_subnet_cidr already used by another subnet. Set CAVE_MGMT_SUBNET_CIDR to a different range."
-            exit 1
-        fi
-        mgmt_subnet_id=$(openstack subnet create --network "$mgmt_net_id" --subnet-range "$mgmt_subnet_cidr" "$mgmt_subnet_name" -f value -c id)
-    else
-        mgmt_subnet_id=$(openstack subnet show "$mgmt_subnet_name" -f value -c id)
-    fi
-    
-    # 4. Write TOML
+    # 3. Write TOML
     cat << EOF > "$toml_path"
 public_network_id = "$public_net_id"
 floating_ip_pool = "$public_net_name"
