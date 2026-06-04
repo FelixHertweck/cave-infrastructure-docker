@@ -21,7 +21,7 @@ main() {
     echo -e "  ${YELLOW}2)${NC} Pre-Build Setup (pre-build-images.sh)"
     echo -e "  ${YELLOW}3)${NC} Build Base Images (build-images.sh)"
     echo -e "  ${YELLOW}4)${NC} Deploy Infrastructure (deploy-wrapper.sh)"
-    echo -e "  ${YELLOW}5)${NC} Destroy Infrastructure (exterminate.sh)"
+    echo -e "  ${YELLOW}5)${NC} Destroy Infrastructure (exterminate-wrapper.sh)"
     echo -e "  ${YELLOW}Q)${NC} Quit"
     echo ""
 
@@ -42,21 +42,7 @@ main() {
             exec /cave/deploy-wrapper.sh
             ;;
         5)
-            # Find possible lab prefixes if possible
-            default_prefix="${LAB_PREFIX:-}"
-            if [ -n "$default_prefix" ]; then
-                read -p "Enter Lab Prefix to destroy [$default_prefix]: " prefix
-                prefix="${prefix:-$default_prefix}"
-            else
-                read -p "Enter Lab Prefix to destroy: " prefix
-            fi
-
-            if [ -n "$prefix" ]; then
-                exec /cave/backend/exterminate.sh "$prefix"
-            else
-                echo -e "${RED}Error: Lab prefix cannot be empty.${NC}"
-                exit 1
-            fi
+            exec /cave/exterminate-wrapper.sh
             ;;
         q|Q)
             echo "Exiting..."
