@@ -121,6 +121,7 @@ _escape_sed_repl() {
 }
 
 patch_script_if_needed() {
+    local wait_time="${1:-300}"
     local original="/cave/backend/make_it_so.sh"
 
     # Resolve target IP: explicit env var takes priority, then auto-detect from OS_AUTH_URL
@@ -153,11 +154,13 @@ patch_script_if_needed() {
     local needs_ip_patch=false
     local needs_user_patch=false
     local needs_public_ip_patch=false
+    local needs_wait_patch=false
     [ -n "$target_ip" ] && [ "$target_ip" != "10.80.0.100" ] && needs_ip_patch=true
     [ "$target_user" != "vpnsetup" ] && needs_user_patch=true
     [ -n "$target_public_ip" ] && [ "$target_public_ip" != "195.37.231.202" ] && needs_public_ip_patch=true
+    [ "$wait_time" != "300" ] && needs_wait_patch=true
 
-    if [ "$needs_ip_patch" = false ] && [ "$needs_user_patch" = false ] && [ "$needs_public_ip_patch" = false ]; then
+    if [ "$needs_ip_patch" = false ] && [ "$needs_user_patch" = false ] && [ "$needs_public_ip_patch" = false ] && [ "$needs_wait_patch" = false ]; then
         echo "$original"
         return
     fi
@@ -180,6 +183,10 @@ patch_script_if_needed() {
     if [ "$needs_public_ip_patch" = true ]; then
         sed -i "s|195\.37\.231\.202|$(_escape_sed_repl "$target_public_ip")|g" "$patched"
         print_info "DevStack public IP patched: 195.37.231.202 → $target_public_ip"
+    fi
+    if [ "$needs_wait_patch" = true ]; then
+        sed -i "s/sleep 300/sleep $wait_time/" "$patched"
+        print_info "Wait time patched: 300s → ${wait_time}s"
     fi
 
     echo "$patched"
@@ -266,6 +273,8 @@ ${BLUE}Options:${NC}
                           Without --public, VPN is only reachable internally
   --public-vpn-port PORT  UDP port for the public VPN endpoint (default: 51800)
                           Only relevant when --public is active
+  --wait-time SECONDS     Seconds to wait for infrastructure after tofu apply (default: 300)
+                          Set to 0 to skip the wait entirely
   --dry-run               Show what would be executed without running
   --help                  Show this help message
 
@@ -301,6 +310,7 @@ main() {
     local use_wg=false
     local use_public=true
     local public_vpn_port="${CAVE_PUBLIC_VPN_PORT:-51800}"
+    local wait_time="${CAVE_WAIT_TIME:-300}"
     local lab_prefix=""
     local users_file=""
     local dry_run=false
@@ -325,6 +335,10 @@ main() {
                 ;;
             --public-vpn-port)
                 public_vpn_port="$2"
+                shift 2
+                ;;
+            --wait-time)
+                wait_time="$2"
                 shift 2
                 ;;
             --dry-run)
@@ -447,11 +461,16 @@ main() {
         else
             echo "  Public VPN:    disabled (internal access only)"
         fi
+        if [ "$wait_time" = "0" ]; then
+            echo "  Wait Time:     skipped"
+        else
+            echo "  Wait Time:     ${wait_time}s"
+        fi
         echo ""
         if [ "$use_public" = true ]; then
-            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [o] Change VPN port    [p] Change prefix    [n] Cancel"
+            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [o] Change VPN port    [p] Change prefix    [w] Change wait time    [n] Cancel"
         else
-            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [p] Change prefix    [n] Cancel"
+            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [p] Change prefix    [w] Change wait time    [n] Cancel"
         fi
         echo ""
         echo -n "Choice: "
@@ -497,6 +516,17 @@ main() {
                     lab_prefix="$new_prefix"
                 fi
                 ;;
+            w|W)
+                echo -n "Wait time in seconds (0 to skip) [$wait_time]: "
+                read -r new_wait
+                if [ -n "$new_wait" ]; then
+                    if ! [[ "$new_wait" =~ ^[0-9]+$ ]]; then
+                        print_error "Wait time must be a non-negative integer"
+                    else
+                        wait_time="$new_wait"
+                    fi
+                fi
+                ;;
             n|N)
                 print_info "Deployment cancelled"
                 exit 0
@@ -522,7 +552,7 @@ main() {
 
     # Build command
     local make_it_so_script
-    make_it_so_script=$(patch_script_if_needed)
+    make_it_so_script=$(patch_script_if_needed "$wait_time")
     [ "$make_it_so_script" != "/cave/backend/make_it_so.sh" ] && trap "rm -f '$make_it_so_script'" EXIT
 
     local cmd=("$make_it_so_script" "$config_file" "$ssh_key_path")
