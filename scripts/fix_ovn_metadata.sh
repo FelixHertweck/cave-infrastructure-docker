@@ -7,9 +7,14 @@
 # namespace broken, so VMs cannot reach 169.254.169.254 and cloud-init never
 # receives the SSH key pair -> Permission denied (publickey) on first boot.
 #
-# Fix: patch provision_datapath() in agent.py to swallow that exception, then
-# bind-mount the patched file over the read-only snap filesystem. A systemd
-# service re-applies the bind-mount on every boot (and after snap refresh).
+# A second crash occurs in teardown_datapath() during startup cleanup of
+# stale namespaces: del_veth() -> privileged.delete_interface() also raises
+# InterfaceOperationNotSupported under snap confinement on newer kernels.
+#
+# Fix: patch both provision_datapath() and teardown_datapath() in agent.py to
+# swallow those exceptions, then bind-mount the patched file over the
+# read-only snap filesystem. A systemd service re-applies the bind-mount on
+# every boot (and after snap refresh).
 #
 # Usage (as root):
 #   ./fix_ovn_metadata.sh install   # patch, bind-mount, install service
@@ -44,31 +49,57 @@ path = sys.argv[1]
 with open(path) as f:
     lines = f.readlines()
 
+def make_try_except_block(line, extra_comment=""):
+    """Wrap a single line in a try/except that swallows EOPNOTSUPP via privsep."""
+    stripped = line.lstrip()
+    indent = len(line) - len(stripped)
+    sp = ' ' * indent
+    block = [
+        sp + 'try:\n',
+        ' ' * (indent + 4) + stripped,
+        # The OSError(EOPNOTSUPP) is serialised across the oslo.privsep IPC
+        # channel and re-raised as InterfaceOperationNotSupported, so we
+        # must catch Exception and check the type name instead of OSError.
+        sp + 'except Exception as _exc:  # EOPNOTSUPP via privsep on newer kernels under snap confinement\n',
+        sp + '    _ename = type(_exc).__name__\n',
+        sp + '    _is_eopnotsupp = (isinstance(_exc, OSError) and _exc.errno == 95)\n',
+        sp + '    _is_privsep_eopnotsupp = "OperationNotSupported" in _ename\n',
+        sp + '    if not (_is_eopnotsupp or _is_privsep_eopnotsupp):\n',
+        sp + '        raise\n',
+        sp + '    LOG.debug("Ignoring EOPNOTSUPP%s (%s): %s", "%s", _ename, _exc)\n' % (
+            (' ' + extra_comment) if extra_comment else '', ),
+    ]
+    return block
+
 patched = []
 i = 0
-in_func = False
+current_func = None
 changes = 0
 
 while i < len(lines):
     line = lines[i]
 
-    if 'def provision_datapath' in line:
-        in_func = True
-    elif in_func and line.strip().startswith('def '):
-        in_func = False
+    # Track which function we are in
+    if line.strip().startswith('def '):
+        import re
+        m = re.match(r'\s*def (\w+)', line)
+        if m:
+            current_func = m.group(1)
 
-    if (in_func
+    already_wrapped = (i > 0 and 'try:' in lines[i - 1])
+
+    # -----------------------------------------------------------------
+    # Patch 1: provision_datapath() — ip2.addr.delete(ipaddr)
+    # -----------------------------------------------------------------
+    if (current_func == 'provision_datapath'
             and 'ip2.addr.delete(ipaddr)' in line
-            and (i == 0 or 'try:' not in lines[i - 1])):
+            and not already_wrapped):
         stripped = line.lstrip()
         indent = len(line) - len(stripped)
         sp = ' ' * indent
         patched += [
             sp + 'try:\n',
             ' ' * (indent + 4) + stripped,
-            # The OSError(EOPNOTSUPP) is serialised across the oslo.privsep IPC
-            # channel and re-raised as InterfaceOperationNotSupported, so we
-            # must catch Exception and check the type name instead of OSError.
             sp + 'except Exception as _exc:  # EOPNOTSUPP via privsep on newer kernels under snap confinement\n',
             sp + '    _ename = type(_exc).__name__\n',
             sp + '    _is_eopnotsupp = (isinstance(_exc, OSError) and _exc.errno == 95)\n',
@@ -81,11 +112,39 @@ while i < len(lines):
         i += 1
         continue
 
+    # -----------------------------------------------------------------
+    # Patch 2: teardown_datapath() — ip_lib.IPWrapper().del_veth(...)
+    # -----------------------------------------------------------------
+    if (current_func == 'teardown_datapath'
+            and 'del_veth(' in line
+            and not already_wrapped):
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        sp = ' ' * indent
+        patched += [
+            sp + 'try:\n',
+            ' ' * (indent + 4) + stripped,
+            sp + 'except Exception as _exc:  # EOPNOTSUPP via privsep on newer kernels under snap confinement\n',
+            sp + '    _ename = type(_exc).__name__\n',
+            sp + '    _is_eopnotsupp = (isinstance(_exc, OSError) and _exc.errno == 95)\n',
+            sp + '    _is_privsep_eopnotsupp = "OperationNotSupported" in _ename\n',
+            sp + '    if not (_is_eopnotsupp or _is_privsep_eopnotsupp):\n',
+            sp + '        raise\n',
+            sp + '    LOG.debug("Ignoring EOPNOTSUPP on del_veth (%s): %s", _ename, _exc)\n',
+        ]
+        changes += 1
+        i += 1
+        continue
+
     patched.append(line)
     i += 1
 
 if changes == 0:
-    print("WARNING: target pattern not found — snap may have been updated or bug already fixed")
+    print("WARNING: no target patterns found — snap may have been updated or bug already fixed")
+elif changes == 1:
+    print("WARNING: only 1 of 2 expected patterns was found and patched")
+    with open(path, 'w') as f:
+        f.writelines(patched)
 else:
     with open(path, 'w') as f:
         f.writelines(patched)
