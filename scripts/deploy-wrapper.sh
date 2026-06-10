@@ -57,6 +57,7 @@ validate_ssh_key() {
         print_error "Make sure your SSH key is in ./ssh-keys/$SSH_KEY_NAME"
         exit 1
     fi
+    chmod 0600 "$ssh_key_path"
     print_success "SSH key found: $SSH_KEY_NAME"
     echo "$ssh_key_path"
 }
@@ -160,17 +161,16 @@ patch_script_if_needed() {
     [ -n "$target_public_ip" ] && [ "$target_public_ip" != "195.37.231.202" ] && needs_public_ip_patch=true
     [ "$wait_time" != "300" ] && needs_wait_patch=true
 
-    if [ "$needs_ip_patch" = false ] && [ "$needs_user_patch" = false ] && [ "$needs_public_ip_patch" = false ] && [ "$needs_wait_patch" = false ]; then
-        echo "$original"
-        return
-    fi
-
     # Temp copy must live in /cave/backend/ so realpath "$0" inside the script
     # resolves SCRIPT_DIR correctly and relative paths like WG_SERVICE_DIR still work
     local patched
     patched=$(mktemp /cave/backend/.make_it_so_XXXXXX.sh)
     cp "$original" "$patched"
     chmod +x "$patched"
+
+    # Always patch: skip interactive tofu confirmation
+    sed -i "s/^tofu apply$/tofu apply -auto-approve/" "$patched"
+    print_info "OpenTofu auto-approve enabled"
 
     if [ "$needs_ip_patch" = true ]; then
         sed -i "s|10\.80\.0\.100|$(_escape_sed_repl "$target_ip")|g" "$patched"
@@ -567,7 +567,7 @@ main() {
     # Build command
     local make_it_so_script
     make_it_so_script=$(patch_script_if_needed "$wait_time")
-    [ "$make_it_so_script" != "/cave/backend/make_it_so.sh" ] && trap "rm -f '$make_it_so_script'" EXIT
+    trap "rm -f '$make_it_so_script'" EXIT
 
     local cmd=("$make_it_so_script" "$config_file" "$ssh_key_path")
 
