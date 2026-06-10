@@ -192,6 +192,17 @@ patch_script_if_needed() {
     echo "$patched"
 }
 
+rel_path() {
+    local p="$1"
+    if [[ "$p" == "$HOME"* ]]; then
+        echo "~${p#$HOME}"
+    elif [[ "$p" == /cave/backend/* ]]; then
+        echo "${p#/cave/backend/}"
+    else
+        echo "$p"
+    fi
+}
+
 print_connection_info() {
     local lab_prefix="$1"
     local use_wg="$2"
@@ -218,8 +229,8 @@ print_connection_info() {
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n" >&2
 
     echo -e "${GREEN}► VPN Configs${NC}" >&2
-    echo "  Teams:   $vpn_out/teams/" >&2
-    echo "  Admins:  $vpn_out/admins/" >&2
+    echo "  Teams:   $(rel_path "$vpn_out/teams/")" >&2
+    echo "  Admins:  $(rel_path "$vpn_out/admins/")" >&2
     if [ "$vpn_type" = "openvpn" ]; then
         local ovpn_file
         ovpn_file=$(find "$vpn_out/admins" -name "*.ovpn" 2>/dev/null | head -1)
@@ -229,11 +240,6 @@ print_connection_info() {
             echo "  VPN Endpoint: $vpn_endpoint" >&2
         fi
     fi
-    echo "" >&2
-
-    echo -e "${GREEN}► Kali Guacamole Access${NC}" >&2
-    echo "  Credentials: kali / kali" >&2
-    echo "  VPN Server:  $gateway" >&2
     echo "" >&2
 
     local local_port=8443
@@ -386,7 +392,15 @@ main() {
         
         # Show menu
         for i in "${!configs[@]}"; do
-            echo "  $((i+1))) ${configs[$i]}"
+            local _dir _base _display
+            _dir=$(dirname "${configs[$i]}")
+            _base=$(basename "${configs[$i]}")
+            if [ "$_dir" = "." ]; then
+                _display="${_base}.json5"
+            else
+                _display="${_dir}/${_base}.json5"
+            fi
+            echo "  $((i+1))) $_display"
         done
         
         echo -n "Select configuration (1-${#configs[@]}): "
