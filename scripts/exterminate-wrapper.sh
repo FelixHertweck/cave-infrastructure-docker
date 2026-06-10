@@ -247,7 +247,7 @@ main() {
     echo ""
 
     cd /cave/backend
-    "${cmd[@]}"
+    yes 2>/dev/null | "${cmd[@]}"
 }
 
 main "$@"
