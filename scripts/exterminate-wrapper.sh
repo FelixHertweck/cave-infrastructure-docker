@@ -96,6 +96,58 @@ patch_exterminate_if_needed() {
     echo "$patched"
 }
 
+select_lab_prefix() {
+    local out_dir="/cave/backend/out"
+    local default_prefix="${LAB_PREFIX:-}"
+    local -a deployments=()
+
+    if [ -d "$out_dir" ]; then
+        local d
+        while IFS= read -r d; do
+            [ -n "$d" ] && deployments+=("$d")
+        done < <(find "$out_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort)
+    fi
+
+    local selection=""
+    if [ ${#deployments[@]} -gt 0 ]; then
+        print_info "Existing deployments found in $out_dir:"
+        local i
+        for i in "${!deployments[@]}"; do
+            echo "  $((i+1))) ${deployments[$i]}" >&2
+        done
+        echo "" >&2
+        echo "Select a deployment by number, or type a lab prefix manually." >&2
+        if [ -n "$default_prefix" ]; then
+            echo -n "Choice [$default_prefix]: " >&2
+        else
+            echo -n "Choice: " >&2
+        fi
+        read -r selection
+        selection="${selection:-$default_prefix}"
+
+        # Numeric input maps to a listed deployment
+        if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 1 ] && [ "$selection" -le ${#deployments[@]} ]; then
+            selection="${deployments[$((selection-1))]}"
+        fi
+    else
+        print_info "No existing deployments found in $out_dir"
+        if [ -n "$default_prefix" ]; then
+            echo -n "Enter Lab Prefix to destroy [$default_prefix]: " >&2
+            read -r selection
+            selection="${selection:-$default_prefix}"
+        else
+            echo -n "Enter Lab Prefix to destroy: " >&2
+            read -r selection
+        fi
+    fi
+
+    if [ -z "$selection" ]; then
+        print_error "Lab prefix cannot be empty."
+        exit 1
+    fi
+    echo "$selection"
+}
+
 show_usage() {
     cat << EOF >&2
 ${BLUE}Usage:${NC}
@@ -167,19 +219,10 @@ main() {
         ssh_key_path=$(resolve_ssh_key)
     fi
 
-    # Resolve lab prefix interactively if not provided
+    # Resolve lab prefix interactively if not provided — scan out/ for existing
+    # deployments and offer them as a menu, while still allowing free-text entry.
     if [ -z "$lab_prefix" ]; then
-        local default_prefix="${LAB_PREFIX:-}"
-        if [ -n "$default_prefix" ]; then
-            read -p "Enter Lab Prefix to destroy [$default_prefix]: " lab_prefix
-            lab_prefix="${lab_prefix:-$default_prefix}"
-        else
-            read -p "Enter Lab Prefix to destroy: " lab_prefix
-        fi
-        if [ -z "$lab_prefix" ]; then
-            print_error "Lab prefix cannot be empty."
-            exit 1
-        fi
+        lab_prefix=$(select_lab_prefix)
     fi
 
     # Patch exterminate.sh if IP/user differs from defaults
