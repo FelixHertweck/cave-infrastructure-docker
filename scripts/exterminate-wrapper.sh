@@ -105,7 +105,7 @@ select_lab_prefix() {
         local d
         while IFS= read -r d; do
             [ -n "$d" ] && deployments+=("$d")
-        done < <(find "$out_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort)
+        done < <(find "$out_dir" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f\n' 2>/dev/null | sort)
     fi
 
     local selection=""
