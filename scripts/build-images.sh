@@ -81,6 +81,54 @@ main() {
     check_packer_installed
     setup_ssh_key
 
+    # --- Confirmation dialog ---
+    while true; do
+        echo ""
+        print_info "Build Summary:"
+        if [ $LOCAL_MODE -eq 1 ]; then
+            echo "  Source:    Local repository ($CLONE_DIR)"
+        else
+            echo "  Source:    git $REPO_URL @ $COMMIT_HASH"
+        fi
+        echo ""
+        if [ $LOCAL_MODE -eq 1 ]; then
+            echo "  [y/Enter] Build    [r] Use git repository    [n] Cancel"
+        else
+            echo "  [y/Enter] Build    [r] Change repository    [l] Use local    [n] Cancel"
+        fi
+        echo ""
+        echo -n "Choice: "
+        read -r confirm_choice
+
+        case "$confirm_choice" in
+            y|Y|"")
+                break
+                ;;
+            r|R)
+                echo -n "Repository URL: "
+                read -r new_repo_url
+                if [ -n "$new_repo_url" ]; then
+                    REPO_URL="$new_repo_url"
+                    echo -n "Branch/ref [main]: "
+                    read -r new_ref
+                    COMMIT_HASH="${new_ref:-main}"
+                    LOCAL_MODE=0
+                fi
+                ;;
+            l|L)
+                LOCAL_MODE=1
+                CLONE_DIR="/cave/backend/submodule/cave-images"
+                ;;
+            n|N)
+                print_info "Build cancelled"
+                exit 0
+                ;;
+            *)
+                print_error "Invalid choice"
+                ;;
+        esac
+    done
+
     # --- Clone or update repository (unless in local mode) ---
     if [ $LOCAL_MODE -eq 0 ]; then
         # Generate a stable directory name based on repo URL hash
