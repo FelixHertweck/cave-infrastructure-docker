@@ -236,6 +236,7 @@ add_custom_flavors() {
     create_flavor_if_missing "client-large" 8192 50 4
     create_flavor_if_missing "server-small" 2048 20 1
     create_flavor_if_missing "server-large" 8192 50 4
+    create_flavor_if_missing "server-xlarge" 12288 50 4
     create_flavor_if_missing "server-windows" 4096 60 2
     
     echo ""
