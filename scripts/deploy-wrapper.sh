@@ -50,14 +50,22 @@ validate_ssh_key() {
         print_error "SSH_KEY_NAME is not set in .env"
         exit 1
     fi
-    
+
     local ssh_key_path="/home/cave/.ssh/$SSH_KEY_NAME"
     if [ ! -f "$ssh_key_path" ]; then
         print_error "SSH key not found: $ssh_key_path"
         print_error "Make sure your SSH key is in ./ssh-keys/$SSH_KEY_NAME"
         exit 1
     fi
-    chmod 0600 "$ssh_key_path"
+
+    # Check SSH key permissions (should be 0600 for security)
+    local file_perms
+    file_perms=$(stat -c '%a' "$ssh_key_path" 2>/dev/null)
+    if [ "$file_perms" != "600" ]; then
+        print_error "SSH key has incorrect permissions: $file_perms (expected 0600). Cannot change permissions on read-only filesystem."
+        exit 1
+    fi
+
     print_success "SSH key found: $SSH_KEY_NAME"
     echo "$ssh_key_path"
 }
