@@ -1,5 +1,5 @@
 # Multi-stage build for CAVE Infrastructure
-FROM python:3.12.9-slim-bookworm AS builder
+FROM python:3.14.6-slim-bookworm AS builder
 
 # Original cave repository
 #ARG CAVE_REPO=https://gitlab.opencode.de/BSI-Bund/cave/cave-infrastructure.git
@@ -47,7 +47,7 @@ FROM ghcr.io/opentofu/opentofu:1.9.0 AS tofu
 
 # ---
 
-FROM python:3.12.9-slim-bookworm AS final
+FROM python:3.14.6-slim-bookworm AS final
 
 LABEL maintainer="CAVE Infrastructure"
 LABEL description="Docker container for CAVE Infrastructure deployment"
