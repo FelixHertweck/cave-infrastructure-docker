@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Base images used in the main Dockerfile
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Base images used in the Windows image builder Dockerfile
+  - package-ecosystem: "docker"
+    directory: "/windows-image-builder"
+    schedule:
+      interval: "weekly"
+
+  # Actions used in the GitHub workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
