@@ -4,7 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Configure cave-images repository and reference (tag, branch, or commit)
 ARG CAVE_REPO=https://gitlab.opencode.de/oc000142689289/cave-images.git
-ARG CAVE_REF=4b089d426c18e78eaf54aeb5a4a8b016b026ac41
+ARG CAVE_REF=3785eb1966db6599bb56158fa3d63db53df2e216
 
 # Install dependencies for QEMU, UEFI simulation, git and noVNC
 RUN apt-get update && apt-get install -y --no-install-recommends \
