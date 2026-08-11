@@ -25,6 +25,14 @@ sed -i 's/-spice port=$SPICE_PORT,addr=127.0.0.1,disable-ticketing=on,image-comp
 echo "Configuring QEMU monitor to use a UNIX socket..."
 sed -i 's/-monitor stdio/-monitor unix:\/work\/qemu-monitor.sock,server,nowait/g' /work/bootstrap.sh
 
+# Debian/Ubuntu's swtpm AppArmor profile denies non-standard paths (e.g. /work); /tmp is permitted.
+echo "Relocating swtpm socket/state to /tmp to avoid AppArmor path confinement..."
+sed -i \
+    -e 's#--ctrl type=unixio,path=./swtpm.sock#--ctrl type=unixio,path=/tmp/swtpm.sock#g' \
+    -e 's#-chardev socket,id=chrtpm0,path=./swtpm.sock#-chardev socket,id=chrtpm0,path=/tmp/swtpm.sock#g' \
+    -e 's#^TPM_DIR=tpm2_${VIRTIO_DRV_FOLDER}#TPM_DIR=/tmp/tpm2_${VIRTIO_DRV_FOLDER}#g' \
+    /work/bootstrap.sh
+
 echo "Symlinking ISO images from /work/iso-images to /work..."
 # Create symbolic links for all ISO files so bootstrap.sh finds them in its working directory
 ln -s /work/iso-images/*.iso /work/ 2>/dev/null || true
