@@ -43,7 +43,7 @@ RUN rm -rf /tmp/cave/.git /tmp/cave/*/.git
 
 # ---
 
-FROM ghcr.io/opentofu/opentofu:1.9.0 AS tofu
+FROM ghcr.io/opentofu/opentofu:1.12.6 AS tofu
 
 # ---
 
