@@ -85,7 +85,7 @@ main() {
         echo -e "  Q) Quit"
         echo ""
         
-        read -p "Select image(s) to upload [1-${#IMAGES[@]}, A, Q] or space-separated numbers: " CHOICE
+        read -p "Select image(s) to upload [1-${#IMAGES[@]}, A, Q] or numbers separated by spaces/commas: " CHOICE
         
         # Process selection
         case "$CHOICE" in
@@ -100,10 +100,16 @@ main() {
                 break
                 ;;
             *)
-                # Check if it's a valid input (numbers and spaces)
-                if [[ "$CHOICE" =~ ^[0-9\ ]+$ ]]; then
+                # Check if it's a valid input (numbers, spaces, commas)
+                if [[ "$CHOICE" =~ ^[0-9,[:space:]]+$ ]]; then
+                    # Normalise commas to spaces so "3,8" and "3 8" both work
+                    local SELECTION="${CHOICE//,/ }"
+                    if [ -z "${SELECTION// /}" ]; then
+                        print_error "No image selected."
+                        continue
+                    fi
                     local valid=true
-                    for num in $CHOICE; do
+                    for num in $SELECTION; do
                         if [ "$num" -lt 1 ] || [ "$num" -gt "${#IMAGES[@]}" ]; then
                             print_error "Invalid selection: $num"
                             valid=false
@@ -113,12 +119,12 @@ main() {
                     
                     if [ "$valid" = true ]; then
                         # Upload selected images
-                        for num in $CHOICE; do
+                        for num in $SELECTION; do
                             upload_image "${IMAGES[$((num-1))]}"
                         done
                     fi
                 else
-                    print_error "Invalid choice. Please enter numbers (1-${#IMAGES[@]}), A, Q, or space-separated numbers."
+                    print_error "Invalid choice. Please enter numbers (1-${#IMAGES[@]}), A, Q, or numbers separated by spaces/commas."
                 fi
                 ;;
         esac
