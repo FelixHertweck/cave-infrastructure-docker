@@ -166,7 +166,7 @@ main() {
         echo -e "  A) All images"
         echo -e "  Q) Quit"
         echo ""
-        read -p "Which image do you want to build? [1-${#IMAGES[@]}, A, Q] or space-separated numbers: " CHOICE
+        read -p "Which image do you want to build? [1-${#IMAGES[@]}, A, Q] or numbers separated by spaces/commas: " CHOICE
 
         # --- Dispatch ---
         case "$CHOICE" in
@@ -180,11 +180,17 @@ main() {
                 break
                 ;;
             *)
-                # Check if it's a valid input (numbers and spaces)
-                if [[ "$CHOICE" =~ ^[0-9\ ]+$ ]]; then
-                    # Parse space-separated numbers
+                # Check if it's a valid input (numbers, spaces, commas)
+                if [[ "$CHOICE" =~ ^[0-9,[:space:]]+$ ]]; then
+                    # Normalise commas to spaces so "3,8" and "3 8" both work
+                    local SELECTION="${CHOICE//,/ }"
+                    if [ -z "${SELECTION// /}" ]; then
+                        print_error "No image selected."
+                        continue
+                    fi
+                    # Parse the selected numbers
                     local valid=true
-                    for num in $CHOICE; do
+                    for num in $SELECTION; do
                         if [ "$num" -lt 1 ] || [ "$num" -gt "${#IMAGES[@]}" ]; then
                             print_error "Invalid selection: $num"
                             valid=false
@@ -194,12 +200,12 @@ main() {
                     
                     if [ "$valid" = true ]; then
                         # Build selected images
-                        for num in $CHOICE; do
+                        for num in $SELECTION; do
                             build_image "${IMAGES[$((num-1))]}"
                         done
                     fi
                 else
-                    print_error "Invalid choice. Please enter numbers (1-${#IMAGES[@]}), A, Q, or space-separated numbers."
+                    print_error "Invalid choice. Please enter numbers (1-${#IMAGES[@]}), A, Q, or numbers separated by spaces/commas."
                 fi
                 ;;
         esac

@@ -224,7 +224,7 @@ add_custom_flavors() {
     echo "Checking existing flavors..."
     
     # Windows flavor specifications
-    create_flavor_if_missing "windows.small" 4096 60 2
+    create_flavor_if_missing "windows.small" 4096 80 2
     create_flavor_if_missing "windows.large" 16384 120 8
     
     # Linux flavor specifications
@@ -237,7 +237,7 @@ add_custom_flavors() {
     create_flavor_if_missing "server-small" 2048 20 1
     create_flavor_if_missing "server-large" 8192 50 4
     create_flavor_if_missing "server-xlarge" 12288 50 4
-    create_flavor_if_missing "server-windows" 4096 60 2
+    create_flavor_if_missing "server-windows" 4096 80 2
     
     echo ""
     echo "Available VM flavors:"
