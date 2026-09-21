@@ -131,6 +131,7 @@ _escape_sed_repl() {
 
 patch_script_if_needed() {
     local wait_time="${1:-300}"
+    local access_mode="${2:-host}"
     local original="/cave/backend/make_it_so.sh"
 
     # Resolve target IP: explicit env var takes priority, then auto-detect from OS_AUTH_URL
@@ -141,6 +142,11 @@ patch_script_if_needed() {
         if [[ "$url_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             target_ip="$url_host"
         fi
+    fi
+
+    if [ "$access_mode" = "host" ] && [ -z "$target_ip" ]; then
+        print_info "CAVE_HOST_IP is not set and OS_AUTH_URL has no plain IP: the deployment will use the built-in default host 10.80.0.100."
+        print_info "Set CAVE_HOST_IP to your OpenStack host, or use --access direct if you have no access to the OpenStack host (managed OpenStack)."
     fi
 
     local target_user="${CAVE_HOST_SSH_USER:-vpnsetup}"
@@ -168,6 +174,12 @@ patch_script_if_needed() {
     [ "$target_user" != "vpnsetup" ] && needs_user_patch=true
     [ -n "$target_public_ip" ] && [ "$target_public_ip" != "195.37.231.202" ] && needs_public_ip_patch=true
     [ "$wait_time" != "300" ] && needs_wait_patch=true
+    # The OpenStack host is not used in direct mode, so its defaults are irrelevant there.
+    if [ "$access_mode" = "direct" ]; then
+        needs_ip_patch=false
+        needs_user_patch=false
+        needs_public_ip_patch=false
+    fi
 
     # Temp copy must live in /cave/backend/ so realpath "$0" inside the script
     # resolves SCRIPT_DIR correctly and relative paths like WG_SERVICE_DIR still work
@@ -214,6 +226,7 @@ rel_path() {
 print_connection_info() {
     local lab_prefix="$1"
     local use_wg="$2"
+    local access_mode="${3:-host}"
 
     local vpn_type
     vpn_type=$([ "$use_wg" = true ] && echo "wg" || echo "openvpn")
@@ -255,8 +268,12 @@ print_connection_info() {
     while IFS= read -r ip; do
         [ -z "$ip" ] && continue
         echo -e "  ${YELLOW}https://localhost:${local_port}${NC}  →  ${ip}:443" >&2
-        echo "  ssh -p $jump_port -L ${local_port}:localhost:${inner_port} ${jump_host} \\" >&2
-        echo "    \"ssh -N -L ${inner_port}:${ip}:443 ubuntu@${gateway}\"" >&2
+        if [ "$access_mode" = "direct" ]; then
+            echo "  ssh -N -L ${local_port}:${ip}:443 ubuntu@${gateway}" >&2
+        else
+            echo "  ssh -p $jump_port -L ${local_port}:localhost:${inner_port} ${jump_host} \\" >&2
+            echo "    \"ssh -N -L ${inner_port}:${ip}:443 ubuntu@${gateway}\"" >&2
+        fi
         echo "" >&2
         local_port=$((local_port + 1))
         inner_port=$((inner_port + 1))
@@ -264,7 +281,7 @@ print_connection_info() {
         | select(.key | test("kali.*output_ansible"))
         | .value.value.ipv4' "$tofu_json" 2>/dev/null | sort)
 
-    if [ -z "${CAVE_OPENSTACK_HOST:-}" ]; then
+    if [ "$access_mode" != "direct" ] && [ -z "${CAVE_OPENSTACK_HOST:-}" ]; then
         echo -e "  ${YELLOW}Tip: Set CAVE_OPENSTACK_HOST and CAVE_OPENSTACK_PORT in .env${NC}" >&2
     fi
 }
@@ -283,7 +300,12 @@ ${BLUE}Options:${NC}
   --wg                    Use WireGuard for VPN (default: OpenVPN)
   --lab-prefix PREFIX     Custom lab prefix (default: from .env or config name)
   --users FILE            User configuration file (default: users_<config>.json)
-  --no-public             Disable public VPN IP (default: enabled)
+  --access MODE           How the VPN gateway is reached (default: host, or CAVE_ACCESS_MODE)
+                          host:   via the OpenStack host (SSH jump host, iptables port forwarding,
+                                  needs the vpnsetup user, see scripts/host-init.sh)
+                          direct: straight to the gateway's floating IP. No OpenStack host needed,
+                                  use for a managed OpenStack. --no-public/--public-vpn-port are ignored
+  --no-public             Disable public VPN IP (default: enabled, host mode only)
                           Without --public, VPN is only reachable internally
   --public-vpn-port PORT  UDP port for the public VPN endpoint (default: 51800)
                           Only relevant when --public is active
@@ -328,6 +350,7 @@ main() {
     local lab_prefix=""
     local users_file=""
     local dry_run=false
+    local access_mode="${CAVE_ACCESS_MODE:-host}"
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -353,6 +376,10 @@ main() {
                 ;;
             --wait-time)
                 wait_time="$2"
+                shift 2
+                ;;
+            --access)
+                access_mode="$2"
                 shift 2
                 ;;
             --dry-run)
@@ -381,6 +408,11 @@ main() {
         esac
     done
     
+    if [ "$access_mode" != "host" ] && [ "$access_mode" != "direct" ]; then
+        print_error "Invalid --access value '$access_mode' (use host or direct)"
+        exit 1
+    fi
+
     # Validate credentials and SSH key
     validate_credentials
     local ssh_key_path=$(validate_ssh_key)
@@ -478,10 +510,15 @@ main() {
         fi
         echo "  Lab Prefix:    $lab_prefix"
         echo "  VPN:           $([ "$use_wg" = true ] && echo "WireGuard" || echo "OpenVPN")"
-        if [ "$use_public" = true ]; then
-            echo "  Public VPN:    enabled  →  ${CAVE_PUBLIC_IP:-<CAVE_PUBLIC_IP not set>}:$public_vpn_port"
+        if [ "$access_mode" = "direct" ]; then
+            echo "  Access:        direct (gateway floating IP, no OpenStack host needed)"
         else
-            echo "  Public VPN:    disabled (internal access only)"
+            echo "  Access:        host (via the OpenStack host)"
+            if [ "$use_public" = true ]; then
+                echo "  Public VPN:    enabled  →  ${CAVE_PUBLIC_IP:-<CAVE_PUBLIC_IP not set>}:$public_vpn_port"
+            else
+                echo "  Public VPN:    disabled (internal access only)"
+            fi
         fi
         if [ "$wait_time" = "0" ]; then
             echo "  Wait Time:     skipped"
@@ -489,10 +526,12 @@ main() {
             echo "  Wait Time:     ${wait_time}s"
         fi
         echo ""
-        if [ "$use_public" = true ]; then
-            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [o] Change VPN port    [p] Change prefix    [w] Change wait time    [n] Cancel"
+        if [ "$access_mode" = "direct" ]; then
+            echo "  [y/Enter] Deploy    [v] Change VPN    [a] Toggle access mode    [p] Change prefix    [w] Change wait time    [n] Cancel"
+        elif [ "$use_public" = true ]; then
+            echo "  [y/Enter] Deploy    [v] Change VPN    [a] Toggle access mode    [s] Toggle public VPN    [o] Change VPN port    [p] Change prefix    [w] Change wait time    [n] Cancel"
         else
-            echo "  [y/Enter] Deploy    [v] Change VPN    [s] Toggle public VPN    [p] Change prefix    [w] Change wait time    [n] Cancel"
+            echo "  [y/Enter] Deploy    [v] Change VPN    [a] Toggle access mode    [s] Toggle public VPN    [p] Change prefix    [w] Change wait time    [n] Cancel"
         fi
         echo ""
         echo -n "Choice: "
@@ -511,8 +550,19 @@ main() {
                     print_info "Switched to WireGuard"
                 fi
                 ;;
+            a|A)
+                if [ "$access_mode" = "direct" ]; then
+                    access_mode=host
+                    print_info "Access mode: host (via the OpenStack host)"
+                else
+                    access_mode=direct
+                    print_info "Access mode: direct (gateway floating IP)"
+                fi
+                ;;
             s|S)
-                if [ "$use_public" = true ]; then
+                if [ "$access_mode" = "direct" ]; then
+                    print_error "Public VPN does not apply in direct mode"
+                elif [ "$use_public" = true ]; then
                     use_public=false
                     print_info "Public VPN disabled (internal access only)"
                 else
@@ -521,12 +571,14 @@ main() {
                 fi
                 ;;
             o|O)
-                if [ "$use_public" = true ]; then
+                if [ "$access_mode" = "host" ] && [ "$use_public" = true ]; then
                     echo -n "New public VPN port [$public_vpn_port]: "
                     read -r new_port
                     if [ -n "$new_port" ]; then
                         public_vpn_port="$new_port"
                     fi
+                elif [ "$access_mode" = "direct" ]; then
+                    print_error "Not applicable in direct mode"
                 else
                     print_error "Public VPN is disabled — enable it first with [s]"
                 fi
@@ -559,8 +611,8 @@ main() {
         esac
     done
 
-    # Validate public VPN settings
-    if [ "$use_public" = true ]; then
+    # Validate public VPN settings (host mode only)
+    if [ "$access_mode" = "host" ] && [ "$use_public" = true ]; then
         if [ -z "${CAVE_PUBLIC_IP:-}" ]; then
             print_error "CAVE_PUBLIC_IP is not set but public VPN is enabled!"
             print_error "Set CAVE_PUBLIC_IP to the external/public IP of your OpenStack host in .env"
@@ -574,7 +626,7 @@ main() {
 
     # Build command
     local make_it_so_script
-    make_it_so_script=$(patch_script_if_needed "$wait_time")
+    make_it_so_script=$(patch_script_if_needed "$wait_time" "$access_mode")
     trap "rm -f '$make_it_so_script'" EXIT
 
     local cmd=("$make_it_so_script" "$config_file" "$ssh_key_path")
@@ -593,11 +645,16 @@ main() {
 
     cmd+=(--lab-prefix "$lab_prefix")
 
+    # direct mode = do not use the OpenStack host (make_it_so.sh --skip-host-ssh)
+    if [ "$access_mode" = "direct" ]; then
+        cmd+=(--skip-host-ssh)
+    fi
+
     if [ "$use_wg" = true ]; then
         cmd+=(--wg)
     fi
 
-    if [ "$use_public" = true ]; then
+    if [ "$access_mode" = "host" ] && [ "$use_public" = true ]; then
         cmd+=(--public --public-vpn-port "$public_vpn_port")
     fi
 
@@ -617,7 +674,7 @@ main() {
     cd /cave/backend
  
     "${cmd[@]}"
-    print_connection_info "$lab_prefix" "$use_wg"
+    print_connection_info "$lab_prefix" "$use_wg" "$access_mode"
 }
 
 # Run main function
