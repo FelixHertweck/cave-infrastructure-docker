@@ -47,7 +47,14 @@ resolve_ssh_key() {
 }
 
 patch_exterminate_if_needed() {
+    local access_mode="${1:-host}"
     local original="/cave/backend/exterminate.sh"
+
+    # The OpenStack host is not used in direct mode: nothing to patch.
+    if [ "$access_mode" = "direct" ]; then
+        echo "$original"
+        return
+    fi
 
     local target_ip="${CAVE_HOST_IP:-}"
     if [ -z "$target_ip" ] && [ -n "${OS_AUTH_URL:-}" ]; then
@@ -160,6 +167,12 @@ ${BLUE}Arguments:${NC}
 
 ${BLUE}Options:${NC}
   --lab-prefix PREFIX     Lab prefix (alternative to positional argument)
+  --access MODE           host (default, or CAVE_ACCESS_MODE) or direct. Must match how the lab was
+                          deployed. direct: no OpenStack host involved (managed OpenStack), no iptables
+                          cleanup, no SSH key needed.
+  --hard                  (Dangerous!) Use openstack cli directly instead of
+                          tofu destroy. Only use this if tofu destroy fails
+                          due to some bug or race condition.
   --dry-run               Show what would be executed without running
   --help                  Show this help message
 
@@ -172,6 +185,7 @@ ${BLUE}Environment variables:${NC}
 ${BLUE}Examples:${NC}
   $0 day1
   $0 --lab-prefix day1 --dry-run
+  $0 day1 --hard
 EOF
 }
 
@@ -180,11 +194,21 @@ main() {
 
     local lab_prefix=""
     local dry_run=false
+    local hard=false
+    local access_mode="${CAVE_ACCESS_MODE:-host}"
 
     while [[ $# -gt 0 ]]; do
         case $1 in
             --lab-prefix)
                 lab_prefix="$2"
+                shift 2
+                ;;
+            --hard)
+                hard=true
+                shift
+                ;;
+            --access)
+                access_mode="$2"
                 shift 2
                 ;;
             --dry-run)
@@ -213,6 +237,11 @@ main() {
         esac
     done
 
+    if [ "$access_mode" != "host" ] && [ "$access_mode" != "direct" ]; then
+        print_error "Invalid --access value '$access_mode' (use host or direct)"
+        exit 1
+    fi
+
     # Resolve SSH key (optional — only needed for iptables cleanup)
     local ssh_key_path=""
     if [ -n "${SSH_KEY_NAME:-}" ]; then
@@ -227,28 +256,47 @@ main() {
 
     # Patch exterminate.sh if IP/user differs from defaults
     local exterminate_script
-    exterminate_script=$(patch_exterminate_if_needed)
+    exterminate_script=$(patch_exterminate_if_needed "$access_mode")
     [ "$exterminate_script" != "/cave/backend/exterminate.sh" ] && trap "rm -f '$exterminate_script'" EXIT
 
-    # Build command
-    local cmd=("$exterminate_script" "$lab_prefix")
-    if [ -n "$ssh_key_path" ]; then
-        cmd+=(--ssh-key "$ssh_key_path")
-    fi
+    # Build command (called again whenever the prefix, mode or access mode changes)
+    local -a cmd=()
+    build_cmd() {
+        cmd=("$exterminate_script" "$lab_prefix")
+        if [ "$hard" = true ]; then
+            cmd+=(--hard)
+        fi
+        # direct mode = do not use the OpenStack host (exterminate.sh --skip-host-ssh)
+        if [ "$access_mode" = "direct" ]; then
+            cmd+=(--skip-host-ssh)
+        elif [ -n "$ssh_key_path" ]; then
+            cmd+=(--ssh-key "$ssh_key_path")
+        fi
+    }
+    build_cmd
 
     # Interactive summary + confirm loop
     while true; do
         echo ""
         print_info "Teardown Summary:"
         echo "  Lab Prefix:  $lab_prefix"
-        if [ -n "$ssh_key_path" ]; then
+        if [ "$hard" = true ]; then
+            echo -e "  Mode:        ${RED}--hard (direct openstack cli, bypasses tofu destroy)${NC}"
+        else
+            echo "  Mode:        tofu destroy"
+        fi
+        if [ "$access_mode" = "direct" ]; then
+            echo "  Access:      direct (no OpenStack host, no iptables cleanup)"
+        elif [ -n "$ssh_key_path" ]; then
+            echo "  Access:      host"
             echo "  SSH Key:     $SSH_KEY_NAME"
             echo "  iptables:    will be cleaned up on DevStack host"
         else
+            echo "  Access:      host"
             echo "  iptables:    skipped (no SSH_KEY_NAME set)"
         fi
         echo ""
-        echo "  [y/Enter] Destroy    [p] Change prefix    [n] Cancel"
+        echo "  [y/Enter] Destroy    [p] Change prefix    [h] Toggle --hard mode    [a] Toggle access mode    [n] Cancel"
         echo ""
         echo -n "Choice: "
         read -r choice
@@ -262,11 +310,31 @@ main() {
                 read -r new_prefix
                 if [ -n "$new_prefix" ]; then
                     lab_prefix="$new_prefix"
-                    cmd=("$exterminate_script" "$lab_prefix")
-                    if [ -n "$ssh_key_path" ]; then
-                        cmd+=(--ssh-key "$ssh_key_path")
-                    fi
                 fi
+                build_cmd
+                ;;
+            h|H)
+                if [ "$hard" = true ]; then
+                    hard=false
+                    print_info "Hard mode disabled (will use tofu destroy)"
+                else
+                    hard=true
+                    print_info "Hard mode enabled (will use openstack cli directly)"
+                fi
+                build_cmd
+                ;;
+            a|A)
+                if [ "$access_mode" = "direct" ]; then
+                    access_mode=host
+                    print_info "Access mode: host (iptables cleanup on the OpenStack host)"
+                else
+                    access_mode=direct
+                    print_info "Access mode: direct (no OpenStack host)"
+                fi
+                # the patched script depends on the mode
+                exterminate_script=$(patch_exterminate_if_needed "$access_mode")
+                [ "$exterminate_script" != "/cave/backend/exterminate.sh" ] && trap "rm -f '$exterminate_script'" EXIT
+                build_cmd
                 ;;
             n|N)
                 print_info "Teardown cancelled"

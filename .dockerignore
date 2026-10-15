@@ -1,0 +1,4 @@
+# Host-only scripts: they run as root on the OpenStack host, not in the container.
+scripts/host-init.sh
+scripts/fix_ovn_metadata.sh
+scripts/ovmf/
