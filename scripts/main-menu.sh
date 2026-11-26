@@ -17,31 +17,35 @@ main() {
     print_header
     
     echo -e "What would you like to do?"
-    echo -e "  ${YELLOW}1)${NC} Upload Windows Images (upload-windows-image.sh)"
-    echo -e "  ${YELLOW}2)${NC} Pre-Build Setup (pre-build-images.sh)"
-    echo -e "  ${YELLOW}3)${NC} Build Base Images (build-images.sh)"
-    echo -e "  ${YELLOW}4)${NC} Deploy Infrastructure (deploy-wrapper.sh)"
-    echo -e "  ${YELLOW}5)${NC} Destroy Infrastructure (exterminate-wrapper.sh)"
+    echo -e "  ${YELLOW}1)${NC} Create VM Flavors (init-flavors.sh)"
+    echo -e "  ${YELLOW}2)${NC} Upload Windows Images (upload-windows-image.sh)"
+    echo -e "  ${YELLOW}3)${NC} Pre-Build Setup (pre-build-images.sh)"
+    echo -e "  ${YELLOW}4)${NC} Build Base Images (build-images.sh)"
+    echo -e "  ${YELLOW}5)${NC} Deploy Infrastructure (deploy-wrapper.sh)"
+    echo -e "  ${YELLOW}6)${NC} Destroy Infrastructure (exterminate-wrapper.sh)"
     echo -e "  ${YELLOW}Q)${NC} Quit"
     echo ""
 
-    read -p "Select an action [1-5, Q]: " choice
+    read -p "Select an action [1-6, Q]: " choice
     echo ""
 
     case "$choice" in
         1)
-            exec /cave/upload-windows-image.sh
+            exec /cave/init-flavors.sh
             ;;
         2)
-            exec /cave/pre-build-images.sh
+            exec /cave/upload-windows-image.sh
             ;;
         3)
-            exec /cave/build-images.sh
+            exec /cave/pre-build-images.sh
             ;;
         4)
-            exec /cave/deploy-wrapper.sh
+            exec /cave/build-images.sh
             ;;
         5)
+            exec /cave/deploy-wrapper.sh
+            ;;
+        6)
             exec /cave/exterminate-wrapper.sh
             ;;
         q|Q)
